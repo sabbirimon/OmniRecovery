@@ -44,7 +44,7 @@ pub(crate) fn inspect(
         Ok(Some(data))
     };
     for sector in [512, 4096] {
-        if size % sector != 0 || size / sector < 6 {
+        if !size.is_multiple_of(sector) || size / sector < 6 {
             continue;
         }
         let last = size / sector - 1;
@@ -92,7 +92,8 @@ pub(crate) fn inspect(
         return Ok(None);
     }
     let mut partitions = Vec::new();
-    for (index, record) in header[446..510].chunks_exact(16).enumerate() {
+    let (records, _) = header[446..510].as_chunks::<16>();
+    for (index, record) in records.iter().enumerate() {
         let kind = record[4];
         if !matches!(record[0], 0 | 0x80) {
             return Ok(None);
@@ -166,7 +167,7 @@ fn gpt(
         || last >= current.max(alternate)
         || !(1..=4096).contains(&count)
         || !(128..=512).contains(&width)
-        || width % 8 != 0
+        || !width.is_multiple_of(8)
     {
         return Ok(None);
     }
@@ -195,10 +196,12 @@ fn gpt(
         if start < first || end < start || end > last {
             return Ok(None);
         }
+        let (name_bytes, _) = entry[56..128].as_chunks::<2>();
         let name = String::from_utf16_lossy(
-            &entry[56..128]
-                .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            &name_bytes
+                .iter()
+                .copied()
+                .map(u16::from_le_bytes)
                 .take_while(|word| *word != 0)
                 .collect::<Vec<_>>(),
         );
