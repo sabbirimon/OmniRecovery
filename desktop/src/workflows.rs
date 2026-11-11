@@ -45,8 +45,7 @@ pub(super) async fn choose_volume(
         .ok_or("Select a mounted volume from Devices & storage.")?;
     let state = state.inner().clone();
     work(move || {
-        let current = devices::discover()?;
-        let after = devices::volume(&current.disks, &id)
+        let after = devices::recheck_volume(&id)
             .filter(|volume| {
                 volume.selectable && volume.uuid == before.uuid && volume.mount == before.mount
             })
@@ -56,7 +55,7 @@ pub(super) async fn choose_volume(
             Source::Volume,
             after.mount.clone().ok_or("Volume is not mounted.")?,
         )?;
-        lock(&state)?.active_volume = Some(after.clone());
+        lock(&state)?.active_volume = Some(after);
         Ok(selection)
     })
     .await
@@ -75,9 +74,8 @@ fn verify_mounted(state: &Shared, slot: Source, source: &Path) -> Result<(), Str
         .active_volume
         .clone()
         .ok_or("Choose the mounted volume from Devices & storage.")?;
-    let devices = devices::discover()?;
     if volume.mount.as_deref() != Some(source)
-        || !devices::volume(&devices.disks, &volume.id).is_some_and(|current| {
+        || !devices::recheck_volume(&volume.id).is_some_and(|current| {
             current.selectable && current.uuid == volume.uuid && current.mount == volume.mount
         })
     {

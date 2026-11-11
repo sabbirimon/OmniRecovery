@@ -53,7 +53,7 @@
 
       <section id="devices" class="view" aria-labelledby="devices-title" hidden>
         <header><h1 id="devices-title">Devices &amp; storage</h1><p>See connected devices and the locations available for read-only inspection.</p></header>
-        <section class="card"><div class="section-top"><h2>Storage inventory</h2><button data-action id="refresh-devices">Refresh devices</button></div><div id="device-metrics" class="metrics"></div><div id="disk-list" class="disk-list"></div></section>
+        <section class="card"><div class="section-top"><h2>Storage inventory</h2><button data-action id="refresh-devices">Refresh devices</button></div><p id="storage-inventory-note" class="muted" hidden></p><div id="device-metrics" class="metrics"></div><div id="disk-list" class="disk-list"></div></section>
         <section class="card output-card"><div class="section-top"><h2>Connected USB devices</h2><button data-action id="check-adb">Check Android USB debugging</button></div><p class="muted">Unlock your Android phone, enable USB debugging and approve the fingerprint on its screen. This check starts the local ADB bridge and lists authorization status.</p><div id="adb-results" class="disk-list"></div><div id="usb-list" class="disk-list"></div><div class="actions device-actions"><button data-jump="scan" data-scan-source="android_export">Import Android export</button><button data-jump="scan" data-scan-source="ios_export">Import iOS export</button></div></section>
       </section>
 
@@ -113,6 +113,7 @@
       <section id="compare" class="view" aria-labelledby="compare-title" hidden>
         <header class="section-top"><div><h1 id="compare-title">Compare captures</h1><p>Review changes between two saved or independently acquired captures.</p></div><button class="jump-button" data-jump="capture">Take a capture</button></header>
         <section class="card">
+          <h2>Compare independently acquired sources</h2>
           <label>Capture type<select id="capture-kind"><option value="image">Storage images</option><option value="folder">Logical export folders</option></select></label>
           <div class="source-pair"><div><h2>Before</h2><p id="before-name" class="selection">Choose the earlier capture.</p><button data-action id="pick-before">Choose earlier capture</button></div><div><h2>After</h2><p id="after-name" class="selection">Choose the later capture.</p><button data-action id="pick-after">Choose later capture</button></div></div>
           <button class="primary" data-action id="start-compare" disabled>Compare captures</button>

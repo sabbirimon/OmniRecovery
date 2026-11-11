@@ -254,14 +254,14 @@ el('start-compare').addEventListener('click', () => run('Verifying both captures
   const result = await invoke('compare_sources', {folders: el('capture-kind').value === 'folder'});
   return renderComparison(result);
 }));
-function renderComparison(result) {
+function renderComparison(result, source = 'Independently acquired sources') {
   const changes = result.paths ? Object.entries(result.paths).map(([name, change]) => [name, change.observation]) : result.changes.map(change => [`${change.media_type.toUpperCase()} · ${change.sha256.slice(0, 16)}…`, change.observation]);
   el('compare-rows').replaceChildren(...changes.slice(0, 250).map(([name, observation]) => {
     const row = document.createElement('tr');
     row.append(text('td', name), text('td', words(observation)));
     return row;
   }));
-  el('compare-summary').textContent = `${number.format(changes.length)} observations. ${changes.length > 250 ? 'Showing the first 250. The saved report includes all observations.' : ''}`;
+  el('compare-summary').textContent = `${source} · ${number.format(changes.length)} observations. ${changes.length > 250 ? 'Showing the first 250. The saved report includes all observations.' : ''}`;
   el('compare-output').hidden = false;
   return 'Comparison finished. Capture order is supplied by the operator.';
 }

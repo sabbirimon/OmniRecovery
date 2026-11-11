@@ -147,14 +147,17 @@ async function updateDevices() {
   deviceList = await invoke('discover_devices');
   const disks = deviceList.disks;
   const count = disks.flatMap(disk => disk.volumes).filter(volume => volume.mount).length;
-  metrics('device-metrics', [['Physical drives', number.format(disks.filter(disk => disk.physical).length)], ['Mounted volumes', number.format(count)], ['USB devices', number.format(deviceList.usb.length)]]);
+  const storageNote = el('storage-inventory-note');
+  storageNote.textContent = deviceList.storage_error || '';
+  storageNote.hidden = !deviceList.storage_error;
+  metrics('device-metrics', [['Physical drives', disks.length ? number.format(disks.filter(disk => disk.physical).length) : 'Unavailable'], ['Mounted volumes', disks.length ? number.format(count) : 'Unavailable'], ['USB devices', deviceList.usb_error ? 'Unavailable' : number.format(deviceList.usb.length)]]);
   el('disk-list').replaceChildren(...disks.map(diskCard));
   el('usb-list').replaceChildren(...deviceList.usb.map(device => {
     const row = text('div', '', 'device-row');
     row.append(text('strong', device.name), text('span', `${device.platform} · ${device.vendor}`, 'muted'));
     return row;
   }));
-  if (deviceList.usb_error) el('usb-list').append(text('p', 'USB inventory unavailable.', 'muted'));
+  if (deviceList.usb_error) el('usb-list').append(text('p', deviceList.usb_error, 'muted'));
   const list = el('sanitize-disk');
   const selected = list.value;
   list.replaceChildren(new Option('Choose a drive', ''), ...disks.filter(disk => disk.physical && !disk.internal).map(disk => new Option(`${disk.name} · ${disk.id} · ${size(disk.size)}`, disk.id)));
@@ -233,7 +236,7 @@ for (const stage of ['before', 'after']) {
 el('compare-saved-captures').addEventListener('click', () => run('Comparing the saved pair…', async () => {
   const result = await invoke('compare_saved');
   showView('compare');
-  return renderComparison(result);
+  return renderComparison(result, 'Saved before/after pair');
 }));
 el('clone-image').addEventListener('click', () => run('Choose a separate physical drive for the clone…', async () => {
   const result = await invoke('clone_image');
