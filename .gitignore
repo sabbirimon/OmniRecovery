@@ -1,0 +1,13 @@
+/target/
+/desktop/target/
+/desktop/gen/
+/dist/
+/local-cases/
+/validation-data/
+/android/.gradle/
+/android/.kotlin/
+/android/app/build/
+/android/local.properties
+*.core
+*.dmp
+.DS_Store

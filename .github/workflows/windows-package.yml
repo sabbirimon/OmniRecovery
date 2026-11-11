@@ -1,0 +1,40 @@
+name: Windows package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-package.yml'
+      - 'Cargo.*'
+      - 'src/**'
+      - 'desktop/**'
+      - 'rust-toolchain.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.99.1 --profile minimal
+      - run: cargo test --release --locked
+      - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
+      - run: cargo build --release --locked
+      - name: Stage standalone executables
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path desktop/Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Path package
+          Copy-Item desktop/target/release/omnirecovery-desktop.exe "package/OmniRecovery-$version-windows-x64.exe"
+          Copy-Item target/release/omnirecovery.exe "package/OmniRecovery-$version-windows-cli-x64.exe"
+          & "package/OmniRecovery-$version-windows-cli-x64.exe" --version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: omnirecovery-windows-x64
+          path: package/*.exe
+          if-no-files-found: error

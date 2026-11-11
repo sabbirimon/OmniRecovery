@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <title>OmniRecovery · Report review</title>
+  <style>
+    :root { color-scheme: light; font-family: Roboto, 'Segoe UI', system-ui, sans-serif; color: #142d52; background: #f2f7fc; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(1120px, calc(100% - 40px)); margin: 32px auto 64px; }
+    header { background: #142d52; color: white; padding: 26px 30px; border-radius: 16px; display: flex; justify-content: space-between; gap: 20px; align-items: center; flex-wrap: wrap; }
+    h1, h2, p, dl { margin: 0; }
+    h1 { font-size: clamp(1.6rem, 4vw, 2.15rem); margin-top: 5px; }
+    h2 { font-size: 1.05rem; }
+    .brand { color: #b0cdff; font-weight: 700; }
+    .card { background: white; border: 1px solid #d9e4f3; border-radius: 14px; padding: 20px; min-width: 0; }
+    .status { margin: 16px 0; color: #495b73; line-height: 1.5; }
+    .button { display: inline-block; background: #2257cf; color: white; border: 1px solid transparent; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 650; }
+    .picker { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .picker:focus-visible + .button, :focus-visible { outline: 3px solid #6e9cff; outline-offset: 3px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 12px; }
+    dt { font-size: .83rem; color: #495b73; }
+    dd { margin: 4px 0 0; font-weight: 650; overflow-wrap: anywhere; }
+    .columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(245px, 1fr); gap: 12px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+    select, input:not([type=file]) { padding: 7px; background: #f7faff; color: #142d52; border: 1px solid #b3c4db; border-radius: 6px; font: inherit; }
+    .rows { overflow: auto; max-height: 32rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { text-align: left; border-bottom: 1px solid #e5edf7; padding: 8px; white-space: nowrap; }
+    th { position: sticky; top: 0; background: white; }
+    td button { color: #1646ad; padding: 5px 6px; background: transparent; border: 0; cursor: pointer; font: inherit; text-decoration: underline; }
+    aside dl { display: grid; gap: 13px; margin-top: 14px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 740px) { .columns { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><div class="brand">OmniRecovery</div><h1>Review recovery results</h1></div>
+      <div><input class="picker" id="report-file" type="file" accept="application/json,.json"><label class="button" for="report-file">Open JSON report</label></div>
+    </header>
+    <p class="status" id="status" role="status">Choose an OmniRecovery scan or repair report from this computer.</p>
+    <section id="review" hidden aria-label="Scan results">
+      <dl class="stats" id="stats"></dl>
+      <div class="columns">
+        <div class="card">
+          <h2>Findings</h2>
+          <div class="filters">
+            <label>Type <select id="type"><option value="">All</option><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
+            <label>Sort <select id="sort"><option value="offset">Offset</option><option value="length">Size</option><option value="confidence">Confidence</option></select></label>
+          </div>
+          <div class="rows"><table><thead><tr><th scope="col">Media</th><th scope="col">Offset</th><th scope="col">Bytes</th><th scope="col">Confidence</th></tr></thead><tbody id="findings"></tbody></table></div>
+          <p class="status" id="empty" hidden>No findings match the selected type.</p>
+        </div>
+        <aside class="card"><h2>Finding details</h2><dl id="detail"></dl></aside>
+      </div>
+    </section>
+    <section class="card" id="repair" hidden><h2>Repair assessment</h2><dl id="repair-detail" class="stats" style="margin-top:14px"></dl></section>
+  </main>
+  <script>
+    'use strict';
+    const byId = id => document.getElementById(id);
+    const number = value => Number.isSafeInteger(value) && value >= 0 ? value.toLocaleString() : 'Unavailable';
+    const readable = value => typeof value === 'string' ? value.replaceAll('_', ' ') : 'Unavailable';
+    const text = (tag, value) => { const element = document.createElement(tag); element.textContent = value; return element; };
+    function describe(target, values) {
+      byId(target).replaceChildren(...values.map(([label, value]) => {
+        const group = document.createElement('div');
+        group.append(text('dt', label), text('dd', value));
+        if (target === 'stats') group.className = 'card';
+        return group;
+      }));
+    }
+    function showFinding(item) {
+      describe('detail', item ? [
+        ['Media type', item.media_type.toUpperCase()], ['Byte offset', number(item.offset)],
+        ['Dimensions', number(item.width) + ' × ' + number(item.height)],
+        ['Validation', readable(item.reason)], ['SHA-256', typeof item.sha256 === 'string' ? item.sha256 : 'Unavailable']
+      ] : [['Selection', 'No finding selected']]);
+    }
+    let results = [];
+    let load = 0;
+    function renderRows() {
+      const type = byId('type').value;
+      const key = byId('sort').value;
+      const items = results.filter(item => !type || item.media_type === type).sort((a, b) => key === 'offset' ? a.offset - b.offset : b[key] - a[key]);
+      const rows = items.map(item => {
+        const row = document.createElement('tr');
+        const first = document.createElement('td');
+        const button = text('button', item.media_type.toUpperCase());
+        button.type = 'button';
+        button.setAttribute('aria-label', `${button.textContent} at byte ${item.offset}`);
+        button.addEventListener('click', () => showFinding(item));
+        first.append(button);
+        row.append(first, text('td', number(item.offset)), text('td', number(item.length)), text('td', number(item.confidence)));
+        return row;
+      });
+      byId('findings').replaceChildren(...rows);
+      byId('empty').hidden = items.length > 0;
+      showFinding(items[0]);
+    }
+    byId('type').addEventListener('change', renderRows);
+    byId('sort').addEventListener('change', renderRows);
+    byId('report-file').addEventListener('change', async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const ticket = ++load;
+      byId('review').hidden = byId('repair').hidden = true;
+      byId('status').textContent = 'Reading report…';
+      try {
+        if (file.size > 32 * 1024 * 1024) throw new Error('Report exceeds 32 MiB.');
+        const report = JSON.parse(await file.text());
+        if (ticket !== load) return;
+        if (!report || report.schema_version !== 1 || typeof report.source_sha256 !== 'string') throw new Error('Unsupported report.');
+        if (Array.isArray(report.findings)) {
+          if (report.findings.length > 4096 || !report.findings.every(item => item && ['jpeg', 'png'].includes(item.media_type) && ['offset', 'length', 'confidence'].every(key => Number.isSafeInteger(item[key]) && item[key] >= 0))) throw new Error('Invalid findings.');
+          results = report.findings;
+          describe('stats', [['Validated findings', number(results.length)], ['Rejected candidates', number(report.rejected?.length)], ['Bytes scanned', number(report.observed_bytes_scanned)], ['Storage profile', readable(report.storage_profile)]]);
+          byId('review').hidden = false;
+          byId('status').textContent = report.observed_ranges_fully_scanned ? 'The selected observed ranges were scanned.' : 'The scan stopped before completing the selected ranges.';
+          renderRows();
+        } else if (['already_valid', 'repair_available', 'unresolved'].includes(report.status)) {
+          describe('repair-detail', [['Status', readable(report.status)], ['Reason', readable(report.reason)], ['Verification', readable(report.result?.verification)], ['Method', readable(report.result?.change?.algorithm)]]);
+          byId('repair').hidden = false;
+          byId('status').textContent = 'Repair report loaded. The report contains assessment and provenance.';
+        } else {
+          throw new Error('Unsupported report.');
+        }
+      } catch (error) {
+        if (ticket === load) byId('status').textContent = 'Could not read this scan or repair report.';
+      } finally {
+        if (ticket === load) event.target.value = '';
+      }
+    });
+  </script>
+</body>
+</html>

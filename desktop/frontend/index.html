@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OmniRecovery</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+  <script src="workspace.js" defer></script>
+</head>
+<body>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="brand"><img src="icon.png" width="42" height="42" alt=""><span>OmniRecovery</span></div>
+      <nav aria-label="Workflows">
+        <button class="nav-button active" data-view="toolbox" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span>Toolbox</button>
+        <button class="nav-button" data-view="devices"><span class="nav-icon" aria-hidden="true">▤</span>Devices &amp; storage</button>
+        <button class="nav-button" data-view="scan"><span class="nav-icon" aria-hidden="true">⌕</span>Scan media</button>
+        <button class="nav-button" data-view="capture"><span class="nav-icon" aria-hidden="true">⊞</span>Capture &amp; clone</button>
+        <button class="nav-button" data-view="compare"><span class="nav-icon" aria-hidden="true">⇄</span>Compare captures</button>
+        <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span>Repair media</button>
+        <button class="nav-button" data-view="transfer"><span class="nav-icon" aria-hidden="true">↗</span>Phone clone</button>
+        <button class="nav-button" data-view="forensics"><span class="nav-icon" aria-hidden="true">◎</span>Forensics</button>
+        <button class="nav-button" data-view="security"><span class="nav-icon" aria-hidden="true">◇</span>Security scan</button>
+        <button class="nav-button" data-view="logs"><span class="nav-icon" aria-hidden="true">≡</span>Scan logs</button>
+        <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span>Sanitize</button>
+        <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span>Automation</button>
+      </nav>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.0</span></div>
+    </aside>
+
+    <main>
+      <section id="toolbox" class="view" aria-labelledby="toolbox-title">
+        <header><h1 id="toolbox-title">Toolbox</h1><p>Choose a source, capture its state, or review the files you can recover.</p></header>
+        <div class="tool-grid featured">
+          <button class="tool-tile mint" data-jump="scan"><span class="tile-icon">⌕</span><strong>Scan media</strong><span>Find files in an image, folder, or mounted drive.</span><span class="tile-arrow">→</span></button>
+          <button class="tool-tile sky" data-jump="devices"><span class="tile-icon">▤</span><strong>Devices &amp; storage</strong><span>Inspect drives, mounted volumes, and USB devices.</span><span class="tile-arrow">→</span></button>
+          <button class="tool-tile lavender" data-jump="capture"><span class="tile-icon">⊞</span><strong>Capture &amp; clone</strong><span>Save before and after snapshots or copy an image.</span><span class="tile-arrow">→</span></button>
+        </div>
+        <h2 class="section-label">More tools</h2>
+        <div class="tool-grid">
+          <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
+          <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Package selected files for a receiving Android phone.</span></button>
+          <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Verify an acquired file against a reference SHA-256.</span></button>
+          <button class="tool-tile" data-jump="repair"><span class="tile-icon">✚</span><strong>Repair media</strong><span>Assess supported PNG and JPEG corruption.</span></button>
+          <button class="tool-tile" data-jump="security"><span class="tile-icon">◇</span><strong>Security scan</strong><span>Check a local sample or review security log indicators.</span></button>
+          <button class="tool-tile" data-jump="logs"><span class="tile-icon">≡</span><strong>Scan logs</strong><span>View, export, delete, or restore activity logs.</span></button>
+          <button class="tool-tile" data-jump="compare"><span class="tile-icon">⇄</span><strong>Compare captures</strong><span>Review changes between earlier and later observations.</span></button>
+          <button class="tool-tile" data-jump="sanitize"><span class="tile-icon">△</span><strong>Sanitize plan</strong><span>Prepare a reviewed disposition plan for an external disk.</span></button>
+          <button class="tool-tile" data-jump="automation"><span class="tile-icon">⌘</span><strong>Automation</strong><span>Run local catalogues and verification from an agent.</span></button>
+        </div>
+      </section>
+
+      <section id="devices" class="view" aria-labelledby="devices-title" hidden>
+        <header><h1 id="devices-title">Devices &amp; storage</h1><p>See connected devices and the locations available for read-only inspection.</p></header>
+        <section class="card"><div class="section-top"><h2>Storage inventory</h2><button data-action id="refresh-devices">Refresh devices</button></div><div id="device-metrics" class="metrics"></div><div id="disk-list" class="disk-list"></div></section>
+        <section class="card output-card"><div class="section-top"><h2>Connected USB devices</h2><button data-action id="check-adb">Check Android USB debugging</button></div><p class="muted">Unlock your Android phone, enable USB debugging and approve the fingerprint on its screen. This check starts the local ADB bridge and lists authorization status.</p><div id="adb-results" class="disk-list"></div><div id="usb-list" class="disk-list"></div><div class="actions device-actions"><button data-jump="scan" data-scan-source="android_export">Import Android export</button><button data-jump="scan" data-scan-source="ios_export">Import iOS export</button></div></section>
+      </section>
+
+      <section id="scan" class="view" aria-labelledby="scan-title" hidden>
+        <header><h1 id="scan-title">Scan media</h1><p>Choose a source and the file types you want to inspect.</p></header>
+        <section class="card source-switch"><label>Source<select id="scan-source"><option value="image">Disk image</option><option value="folder">Folder</option><option value="file">Single file</option><option value="volume">Active mounted volume</option><option value="android_export">Android export folder</option><option value="ios_export">iOS export folder</option></select></label></section>
+        <div id="image-scan">
+        <section class="card source-card" aria-label="Image source">
+          <div class="section-top"><div><h2>Image source</h2><p id="image-name" class="selection">Choose an existing image file.</p></div><div class="actions"><button data-action id="pick-image">Choose image</button><button data-action id="demo-image">Try demo</button></div></div>
+          <div class="scan-options">
+            <label>Storage type<select id="storage"><option value="auto">Unspecified</option><option value="memory-card">Memory card</option><option value="hdd">Hard disk</option><option value="ssd">SSD / NVMe</option><option value="ufs">UFS</option><option value="emmc">eMMC</option><option value="usb-flash">USB flash</option><option value="optical">Optical</option><option value="virtual-disk">Virtual disk</option><option value="other">Other</option></select></label>
+            <label>Media to scan<select id="scan-media"><option value="">JPEG and PNG</option><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
+            <details><summary>Scan a byte range</summary><div class="range"><label>Offset<input id="offset" inputmode="numeric" placeholder="0"></label><label>Length<input id="length" inputmode="numeric" placeholder="To end of image"></label></div></details>
+            <button class="primary" data-action id="start-scan" disabled>Scan image</button>
+          </div>
+          <details class="card output-card" id="source-hex-panel"><summary>Inspect source bytes</summary><div class="filters"><label>Logical offset<input id="hex-offset" inputmode="numeric" placeholder="0"></label><label>Bytes<input id="hex-length" inputmode="numeric" placeholder="64"></label><button data-action id="read-hex">Read bytes</button></div><pre id="source-hex" hidden></pre></details>
+        </section>
+        <section id="scan-output" hidden aria-label="Scan findings">
+          <div class="metrics" id="scan-metrics"></div>
+          <div class="columns">
+            <section class="card findings">
+              <div class="section-top"><h2>Findings</h2><button data-action id="save-scan-report">Save report</button></div>
+              <div class="filters"><label>Type<select id="type-filter"><option value="">All media</option><option value="png">PNG</option><option value="jpeg">JPEG</option></select></label><label>Source origin<select id="origin-filter"><option value="">Any origin</option><option value="listed_partition">Listed partition</option><option value="backup_gpt_candidate">Backup GPT candidate</option><option value="image_unassigned">Unassigned image bytes</option></select></label><label>Sort<select id="sort-findings"><option value="offset">Source offset</option><option value="length">Size</option><option value="confidence">Confidence</option></select></label></div>
+              <div class="table-wrap"><table><thead><tr><th>Media</th><th>Offset</th><th>Size</th><th>Confidence</th></tr></thead><tbody id="findings"></tbody></table></div>
+              <p id="no-findings" class="muted" hidden>No findings match this filter.</p>
+            </section>
+            <section class="card preview" aria-label="Finding preview">
+              <div class="section-top"><h2>Preview</h2><button class="primary" data-action id="save-finding" disabled hidden>Save image</button></div>
+              <div class="picture"><p id="preview-message">Select a finding to inspect it.</p><img id="finding-image" alt="Verified recovered media" hidden></div>
+              <dl id="finding-detail"></dl>
+              <details id="finding-hex-detail" hidden><summary>First 256 bytes</summary><pre id="finding-hex"></pre></details>
+            </section>
+          </div>
+        </section>
+        </div>
+        <div id="catalogue-scan" hidden>
+          <section class="card"><div class="section-top"><div><h2>Selected source</h2><p id="catalogue-source-name" class="selection">Choose a source.</p></div><button data-action id="pick-catalogue-source">Choose source</button></div>
+            <p id="catalogue-source-note" class="muted">Review accessible files by their exported names and categories.</p>
+            <fieldset class="category-picker"><legend>File types to scan</legend><div id="catalogue-categories" class="category-grid"></div></fieldset>
+            <div class="section-top"><label>Filename search<input id="catalogue-query" type="search" maxlength="256" placeholder="Name or relative path"></label><button class="primary" data-action id="start-catalogue">Scan files</button></div>
+          </section>
+          <section class="card output-card" id="catalogue-output" hidden><div class="section-top"><h2>Files found</h2><button data-action id="save-catalogue-report">Save report</button></div><p id="catalogue-summary" class="muted"></p><div class="table-wrap"><table><thead><tr><th>File</th><th>Category</th><th>Size</th></tr></thead><tbody id="catalogue-rows"></tbody></table></div>
+            <div id="catalogue-preview" class="card output-card" hidden><div class="section-top"><h2 id="catalogue-item-title">Selected file</h2><button class="primary" data-action id="recover-catalogue-item" hidden>Recover a copy</button></div><dl id="catalogue-item-detail"></dl><div class="picture" id="catalogue-picture" hidden><img id="catalogue-image" alt="Verified image preview"></div></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="capture" class="view" aria-labelledby="capture-title" hidden>
+        <header><h1 id="capture-title">Capture &amp; clone</h1><p>Take a before snapshot, take an after snapshot, then compare them.</p></header>
+        <section class="card"><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a source to capture.</p>
+          <div class="source-pair"><div><h2>Before capture</h2><p class="muted" id="before-capture-state">No capture saved.</p><button data-action id="capture-before">Capture before</button></div><div><h2>After capture</h2><p class="muted" id="after-capture-state">No capture saved.</p><button data-action id="capture-after">Capture after</button></div></div>
+          <div class="actions device-actions"><button class="primary" data-action id="compare-saved-captures">Compare saved captures</button><button data-action id="clone-image" hidden>Clone image file</button></div>
+          <p class="muted">Snapshots save hashes and file observations locally. Cloning an existing image saves its bytes to a separate physical drive.</p>
+        </section>
+      </section>
+
+      <section id="compare" class="view" aria-labelledby="compare-title" hidden>
+        <header class="section-top"><div><h1 id="compare-title">Compare captures</h1><p>Review changes between two saved or independently acquired captures.</p></div><button class="jump-button" data-jump="capture">Take a capture</button></header>
+        <section class="card">
+          <label>Capture type<select id="capture-kind"><option value="image">Storage images</option><option value="folder">Logical export folders</option></select></label>
+          <div class="source-pair"><div><h2>Before</h2><p id="before-name" class="selection">Choose the earlier capture.</p><button data-action id="pick-before">Choose earlier capture</button></div><div><h2>After</h2><p id="after-name" class="selection">Choose the later capture.</p><button data-action id="pick-after">Choose later capture</button></div></div>
+          <button class="primary" data-action id="start-compare" disabled>Compare captures</button>
+        </section>
+        <section class="card output-card" id="compare-output" hidden><div class="section-top"><h2>Observations</h2><button data-action id="save-compare-report">Save report</button></div><p id="compare-summary" class="muted"></p><div class="table-wrap"><table><thead><tr><th>File or media</th><th>Observation</th></tr></thead><tbody id="compare-rows"></tbody></table></div></section>
+      </section>
+
+      <section id="repair" class="view" aria-labelledby="repair-title" hidden>
+        <header><h1 id="repair-title">Repair damaged media</h1><p>Assess supported PNG and JPEG damage and preview a verified derivative.</p></header>
+        <section class="card"><div class="section-top"><div><h2>Damaged file</h2><p id="damaged-name" class="selection">Choose a standalone PNG or JPEG.</p></div><button data-action id="pick-damaged">Choose file</button></div><label class="field">Original SHA-256 <span class="muted">Required for JPEG and PNG pixel-data repair</span><input id="original-hash" type="text" autocomplete="off" spellcheck="false" maxlength="64" placeholder="Optional for PNG ending repair"></label><button class="primary" data-action id="start-repair" disabled>Assess repair</button></section>
+        <section class="card output-card" id="repair-output" hidden><div class="section-top"><h2>Assessment</h2><div class="actions"><button data-action id="save-repair-report">Save report</button><button class="primary" data-action id="save-repaired" hidden>Save repaired image</button></div></div><dl id="repair-detail"></dl><div class="picture" id="repair-picture" hidden><img id="repair-image" alt="Verified repaired media"></div></section>
+      </section>
+
+      <section id="transfer" class="view" aria-labelledby="transfer-title" hidden>
+        <header><h1 id="transfer-title">Phone clone</h1><p>Choose readable files from a phone export and package them for Android restore.</p></header>
+        <section class="card"><div class="section-top"><div><h2>Source folder</h2><p id="transfer-name" class="selection">Choose a local phone export folder.</p></div><div class="actions"><button data-action id="pick-transfer">Choose folder</button><button data-action id="review-transfer-files">Review files</button></div></div>
+          <div id="transfer-selection" hidden><div class="section-top"><p class="muted" id="transfer-selection-summary"></p><button data-action id="toggle-transfer-selection">Select all</button></div><div class="table-wrap"><table><thead><tr><th>Copy</th><th>File</th><th>Category</th></tr></thead><tbody id="transfer-rows"></tbody></table></div></div>
+          <div class="passwords"><label>Archive passphrase<input id="password" type="password" autocomplete="off" maxlength="128"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div><p class="muted">Use 12–128 printable ASCII characters.</p>
+          <button class="primary" data-action id="start-transfer" disabled>Create encrypted archive</button></section>
+        <section class="card output-card"><h2>Restore on the receiving phone</h2><p class="muted">Copy the .omnibackup archive to the phone. In the Android companion, select the archive and a destination folder, then enter the same passphrase.</p><p id="transfer-result" hidden></p></section>
+      </section>
+
+      <section id="forensics" class="view" aria-labelledby="forensics-title" hidden>
+        <header><h1 id="forensics-title">Forensics</h1><p>Verify a previously acquired image or file in two read passes.</p></header>
+        <section class="card"><div class="section-top"><div><h2>Evidence file</h2><p class="selection" id="evidence-name">Choose an existing image or regular file.</p></div><button data-action id="pick-evidence">Choose file</button></div><div class="passwords"><label>Case reference<input id="case-reference" maxlength="128" placeholder="Optional case or item identifier"></label><label>Expected SHA-256<input id="evidence-sha" maxlength="64" placeholder="Optional trusted digest"></label></div><button data-action class="primary" id="verify-evidence">Verify SHA-256</button></section>
+        <section class="card output-card" id="evidence-output" hidden><div class="section-top"><h2>Verification report</h2><button data-action id="save-evidence-report">Save report</button></div><dl id="evidence-detail"></dl><p class="muted">This standalone report is unsigned.</p></section>
+      </section>
+
+      <section id="security" class="view" aria-labelledby="security-title" hidden>
+        <header><h1 id="security-title">Security scan</h1><p>Submit a sample to the local ClamAV engine or review a text security log.</p></header>
+        <section class="card"><div class="section-top"><div><h2>Local file</h2><p class="selection" id="security-name">Choose a sample or an exported text log.</p></div><button data-action id="pick-security">Choose file</button></div><div class="actions device-actions"><button data-action class="primary" id="scan-sample">Scan sample locally</button><button data-action id="scan-security-log">Check security log</button></div><p class="muted">The app keeps sample bytes on this computer. A public scanning service may share submitted samples.</p></section>
+        <section class="card output-card" id="security-output" hidden><div class="section-top"><h2>Scan result</h2><button data-action id="save-security-report">Save report</button></div><dl id="security-detail"></dl><div class="table-wrap"><table id="security-indicators" hidden><thead><tr><th>Line</th><th>Indicator</th></tr></thead><tbody id="security-rows"></tbody></table></div></section>
+      </section>
+
+      <section id="logs" class="view" aria-labelledby="logs-title" hidden>
+        <header><h1 id="logs-title">Scan logs</h1><p>Review timing, scope and outcomes for each scan or verification.</p></header>
+        <section class="card"><div class="section-top"><label>Show<select id="log-view"><option value="active">Active logs</option><option value="trash">Deleted logs</option></select></label><button data-action id="refresh-logs">Refresh logs</button></div><div class="table-wrap"><table><thead><tr><th>Operation</th><th>Started</th><th>Outcome</th></tr></thead><tbody id="log-rows"></tbody></table></div><p id="logs-empty" class="muted" hidden>No logs in this view.</p></section>
+        <section id="log-detail" class="card output-card" hidden><div class="section-top"><h2>Activity details</h2><div class="actions"><button data-action id="export-log">Save / export JSON</button><button data-action id="move-log">Delete log</button></div></div><pre id="log-json"></pre></section>
+      </section>
+
+      <section id="sanitize" class="view" aria-labelledby="sanitize-title" hidden>
+        <header><h1 id="sanitize-title">Storage sanitization</h1><p>Prepare a plan for an evidence-free external disk.</p></header>
+        <div class="warning"><strong>Permanent data loss</strong><p>Executing a sanitization procedure can make all data on the target unrecoverable. This workflow prepares a plan for review. Drive erasure requires two authorized approvals and a qualified method.</p></div>
+        <section class="card"><div class="source-pair"><label>External physical disk<select id="sanitize-disk"><option value="">Choose a drive</option></select></label><label>Goal<select id="sanitize-goal"><option value="clear">Clear</option><option value="purge">Purge</option><option value="destroy">Destroy</option></select></label></div><div class="actions device-actions"><button data-action id="refresh-sanitize">Refresh disks</button><button data-action class="primary" id="make-sanitize-plan">Prepare plan</button></div></section>
+        <section id="sanitize-output" class="card output-card" hidden><div class="section-top"><h2>Plan for review</h2><button data-action id="save-sanitize-report">Export plan</button></div><dl id="sanitize-detail"></dl></section>
+      </section>
+
+      <section id="automation" class="view" aria-labelledby="automation-title" hidden>
+        <header><h1 id="automation-title">Automation</h1><p>Use local JSON commands from an AI agent or a script.</p></header>
+        <section class="card"><h2>Custom search and verification</h2><pre>omnirecovery-cli catalog /path/to/export --query DCIM
+omnirecovery-cli verify /path/to/capture.dd
+omnirecovery-cli scan /path/to/capture.dd --storage memory-card</pre><p class="muted">On macOS, the CLI is inside the app at Contents/MacOS/omnirecovery-cli. On Windows, use the separate CLI executable. Give the agent an explicit local source. Search matches names and relative paths.</p></section>
+        <section class="card output-card"><h2>Export destinations</h2><p class="muted">Choose a local folder, mounted NAS, or synced folder for reports and archives. Verified recovery and image cloning use a separate directly attached physical drive on macOS.</p></section>
+      </section>
+
+      <div id="status" class="status" role="status" aria-live="polite" hidden><span id="spinner" class="spinner" hidden></span><span id="status-text"></span></div>
+    </main>
+  </div>
+</body>
+</html>

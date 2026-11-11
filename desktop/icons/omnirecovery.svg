@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">OmniRecovery</title>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#234a76"/>
+      <stop offset="1" stop-color="#101f3a"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#6486af"/>
+      <stop offset="1" stop-color="#253b60"/>
+    </linearGradient>
+  </defs>
+  <rect x="6.5" y="6.5" width="115" height="115" rx="27.5" fill="url(#background)" stroke="url(#edge)"/>
+  <path d="M75 35A31 31 0 1 0 94 71" fill="none" stroke="#f3f8ff" stroke-width="12" stroke-linecap="round"/>
+  <rect x="86" y="41" width="15" height="15" rx="3.5" fill="#5fe4dc"/>
+  <rect x="99" y="29" width="7" height="7" rx="2" fill="#91f0e8"/>
+</svg>
