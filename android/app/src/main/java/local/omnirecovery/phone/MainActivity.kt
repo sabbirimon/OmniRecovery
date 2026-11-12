@@ -78,11 +78,12 @@ class MainActivity : Activity() {
 
         val verifyCard = card("Verify and restore")
         password = EditText(this).apply {
-            hint = "Backup passphrase"
+            hint = "Passphrase for encrypted archives"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             isSingleLine = true
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
+        verifyCard.addView(label("Leave the passphrase blank for an unencrypted transfer.", 14f, MUTED), row(top = 4))
         verifyCard.addView(password, row(top = 7))
         verify = action("Verify without restoring", false) { startRestore(true) }
         verifyCard.addView(verify, row(top = 8))
@@ -198,12 +199,6 @@ class MainActivity : Activity() {
         val source = archive ?: return
         val tree = if (verifyOnly) null else destination ?: return
         val passphrase = CharArray(password.length()) { password.text[it] }
-        if (passphrase.size !in 12..128 || passphrase.any { it !in ' '..'~' }) {
-            passphrase.fill('\u0000')
-            status.text = "Enter the 12–128 character passphrase used on the PC."
-            password.requestFocus()
-            return
-        }
         password.text.clear()
         running = true
         status.text = "Verifying archive."
@@ -212,7 +207,7 @@ class MainActivity : Activity() {
             var folder: Uri? = null
             var cached: File? = null
             val message = try {
-                val file = File.createTempFile("archive-", ".encrypted", cacheDir)
+                val file = File.createTempFile("archive-", ".omnibackup", cacheDir)
                 cached = file
                 cacheArchive(source, file)
                 val verified = file.inputStream().buffered().use { TransferArchive.read(it, passphrase) }
@@ -232,6 +227,8 @@ class MainActivity : Activity() {
                     val name = displayName(renamed ?: fresh) ?: "the new destination folder"
                     "Restored and verified ${verified.files} files in $name."
                 }
+            } catch (error: ArchivePassphraseError) {
+                error.message ?: "Check the archive passphrase."
             } catch (_: Exception) {
                 if (folder == null) "Restore stopped before writing files. Check the passphrase, archive and available space."
                 else "Restore stopped. The new folder may contain partial results. Existing folders were left in place."
@@ -299,7 +296,7 @@ class MainActivity : Activity() {
                 runCatching { DocumentsContract.deleteDocument(contentResolver, output) }
                 "Backup stopped. Check selected names, access, and available space."
             } finally {
-                passphrase.fill(' ')
+                passphrase.fill('\u0000')
                 cached?.delete()
             }
             runOnUiThread {

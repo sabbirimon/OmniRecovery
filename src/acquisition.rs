@@ -375,6 +375,8 @@ pub(crate) fn android_properties(
         ("cpu_abi", "ro.product.cpu.abi"),
         ("chipset", "ro.soc.model"),
         ("build", "ro.build.display.id"),
+        ("board", "ro.product.board"),
+        ("abis", "ro.product.cpu.abilist"),
     ] {
         let mut adb = crate::android_wifi::adb_command()?;
         adb.args(["-s", id, "shell", "getprop", property]);

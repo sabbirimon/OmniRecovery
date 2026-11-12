@@ -160,7 +160,11 @@ pub struct AndroidDetails {
     pub shared_storage: Option<AndroidStorage>,
     pub memory: Option<AndroidStorage>,
     pub battery_percent: Option<u8>,
+    pub battery_status: Option<&'static str>,
+    pub battery_health: Option<&'static str>,
+    pub battery_temperature_c: Option<f32>,
     pub display: Option<String>,
+    pub display_density: Option<u32>,
 }
 
 fn android_shell(id: &str, args: &[&str]) -> io::Result<String> {
@@ -211,7 +215,7 @@ fn parse_memory(output: &str) -> Option<AndroidStorage> {
 pub fn inspect_android_details(transport: Transport, id: &str) -> io::Result<AndroidDetails> {
     require_android(transport, id)?;
     let properties = crate::acquisition::android_properties(id)?;
-    let (shared_storage, memory, battery_percent, display) = std::thread::scope(|scope| {
+    let (shared_storage, memory, battery, display, display_density) = std::thread::scope(|scope| {
         let storage = scope.spawn(|| {
             android_shell(id, &["df", "-k", "/sdcard"])
                 .ok()
@@ -222,25 +226,20 @@ pub fn inspect_android_details(transport: Transport, id: &str) -> io::Result<And
                 .ok()
                 .and_then(|text| parse_memory(&text))
         });
-        let battery = scope.spawn(|| {
-            android_shell(id, &["dumpsys", "battery"])
-                .ok()
-                .and_then(|text| {
-                    let level = text
-                        .lines()
-                        .find_map(|line| line.trim().strip_prefix("level:"))?
-                        .trim()
-                        .parse::<u16>()
-                        .ok()?;
-                    let scale = text
-                        .lines()
-                        .find_map(|line| line.trim().strip_prefix("scale:"))?
-                        .trim()
-                        .parse::<u16>()
-                        .ok()?;
-                    (scale > 0 && level <= scale)
-                        .then(|| ((u32::from(level) * 100) / u32::from(scale)) as u8)
-                })
+        let battery = scope.spawn(|| android_shell(id, &["dumpsys", "battery"]).ok());
+        let density = scope.spawn(|| {
+            let text = android_shell(id, &["wm", "density"]).ok()?;
+            text.lines().rev().find_map(|line| {
+                let (field, value) = line.split_once(':')?;
+                if !matches!(field, "Physical density" | "Override density") {
+                    return None;
+                }
+                value
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|density| *density > 0)
+            })
         });
         let display = android_shell(id, &["wm", "size"]).ok().and_then(|text| {
             let size = text
@@ -258,14 +257,47 @@ pub fn inspect_android_details(transport: Transport, id: &str) -> io::Result<And
             memory.join().unwrap_or(None),
             battery.join().unwrap_or(None),
             display,
+            density.join().unwrap_or(None),
         )
     });
+    let battery_value = |key: &str| {
+        battery.as_deref()?.lines().find_map(|line| {
+            let (field, value) = line.trim().split_once(':')?;
+            (field == key)
+                .then(|| value.trim().parse::<i32>().ok())
+                .flatten()
+        })
+    };
+    let battery_percent = battery_value("level")
+        .zip(battery_value("scale"))
+        .filter(|(level, scale)| *scale > 0 && (0..=*scale).contains(level))
+        .map(|(level, scale)| (i64::from(level) * 100 / i64::from(scale)) as u8);
+    let battery_status = match battery_value("status") {
+        Some(2) => Some("Charging"),
+        Some(3) => Some("Discharging"),
+        Some(4) => Some("Not charging"),
+        Some(5) => Some("Full"),
+        _ => None,
+    };
+    let battery_health = match battery_value("health") {
+        Some(2) => Some("Good"),
+        Some(3) => Some("Overheat"),
+        Some(4) => Some("Dead"),
+        Some(5) => Some("Over voltage"),
+        Some(6) => Some("Unspecified failure"),
+        Some(7) => Some("Cold"),
+        _ => None,
+    };
     Ok(AndroidDetails {
         properties,
         shared_storage,
         memory,
         battery_percent,
+        battery_status,
+        battery_health,
+        battery_temperature_c: battery_value("temperature").map(|value| value as f32 / 10.0),
         display,
+        display_density,
     })
 }
 

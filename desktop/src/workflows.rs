@@ -388,6 +388,98 @@ fn validate_case_reference(case_reference: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum PhoneAnalysis {
+    Android,
+    IosFilesystem,
+    IosBackup,
+}
+
+#[tauri::command]
+pub(super) async fn analyze_phone_artifacts(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    mode: PhoneAnalysis,
+    script_sha256: String,
+) -> Result<Value, String> {
+    use omnirecovery::{LeappEngine, LeappInput};
+    if script_sha256.len() != 64 || !script_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Enter the reviewed parser entrypoint’s SHA-256.".into());
+    }
+    let (engine, format) = match mode {
+        PhoneAnalysis::Android => (LeappEngine::Aleapp, LeappInput::Fs),
+        PhoneAnalysis::IosFilesystem => (LeappEngine::Ileapp, LeappInput::Fs),
+        PhoneAnalysis::IosBackup => (LeappEngine::Ileapp, LeappInput::Itunes),
+    };
+    let export = selected(&state, Source::LeappExport)?;
+    let checkout = selected(&state, Source::LeappCheckout)?;
+    let python = selected(&state, Source::LeappPython)?;
+    work(move || {
+        let Some(destination) = forensic_report_destination(&app)? else {
+            return Ok(Value::Null);
+        };
+        tracked(&app, "external_phone_artifact_analysis", || {
+            let report = omnirecovery::analyze_leapp(
+                engine,
+                format,
+                &export,
+                &checkout,
+                &python,
+                &script_sha256,
+                &destination,
+            )
+            .map_err(error)?;
+            Ok(forensic_adapter_summary(report))
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn list_deleted_evidence(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    sector_offset: u64,
+    sector_size: u32,
+) -> Result<Value, String> {
+    let image = selected(&state, Source::Evidence)?;
+    work(move || {
+        let Some(destination) = forensic_report_destination(&app)? else {
+            return Ok(Value::Null);
+        };
+        tracked(&app, "sleuth_kit_deleted_entries", || {
+            let report =
+                omnirecovery::tsk_deleted(&image, &destination, sector_offset, sector_size)
+                    .map_err(error)?;
+            let path = report.output.join("data/tsk-deleted.txt");
+            let mut bytes = Vec::new();
+            use std::io::Read;
+            let preview = std::fs::File::open(path)
+                .and_then(|file| file.take(32 * 1024).read_to_end(&mut bytes));
+            let mut summary = forensic_adapter_summary(report);
+            if preview.is_ok() {
+                summary["preview"] = json!(String::from_utf8_lossy(&bytes));
+            }
+            Ok(summary)
+        })
+    })
+    .await
+}
+
+fn forensic_report_destination(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    picked(
+        app.dialog()
+            .file()
+            .set_title("Choose a folder for the forensic report")
+            .blocking_pick_folder(),
+    )
+}
+
+fn forensic_adapter_summary(report: omnirecovery::AcquisitionReport) -> Value {
+    json!({"output": report.output, "files": report.files.files.len()})
+}
+
 #[tauri::command]
 pub(super) async fn verify_evidence(
     app: AppHandle,
@@ -600,7 +692,9 @@ impl MirrorSession {
 pub(super) async fn android_details(
     id: String,
     transport: omnirecovery::Transport,
+    startup: State<'_, Startup>,
 ) -> Result<omnirecovery::AndroidDetails, String> {
+    startup.check_phone(transport, &id)?;
     work(move || omnirecovery::inspect_android_details(transport, &id).map_err(error)).await
 }
 

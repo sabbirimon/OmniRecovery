@@ -125,8 +125,8 @@ window.syncWorkspaceControls = () => {
     ? selections.has('transfer') && (cloneList === null || cloneSelection.size > 0)
     : el('transfer-source').value === 'files' ? pickedTransferCount > 0 : sourcePhone && chosenCloneFolders().length > 0;
   const targetReady = el('transfer-target').value === 'computer' || targetPhone;
-  const query = el('phone-live-query').value.trim().toLowerCase();
-  const matches = currentBrowse?.report.entries.filter(item => item.path.toLowerCase().includes(query)).length || 0;
+  el('phone-files-details').disabled ||= !readyPhone(currentPhone() || {});
+  const matches = browseRowCount;
   el('phone-live-prev').disabled ||= browsePage === 0;
   el('phone-live-next').disabled ||= matches <= (browsePage + 1) * phonePageSize;
   el('phone-live-query').disabled = busy;
@@ -136,6 +136,8 @@ window.syncWorkspaceControls = () => {
   el('verify-evidence').disabled ||= !selections.has('evidence');
   el('scan-evidence').disabled ||= !selections.has('evidence');
   el('clone-evidence').disabled ||= !selections.has('evidence');
+  el('run-tsk').disabled ||= !selections.has('evidence');
+  el('run-leapp').disabled ||= !['leapp_export', 'leapp_checkout', 'leapp_python'].every(slot => selections.has(slot));
   el('scan-sample').disabled ||= !selections.has('security');
   el('scan-security-log').disabled ||= !selections.has('security');
   el('make-sanitize-plan').disabled ||= !el('sanitize-disk').value;
@@ -478,6 +480,9 @@ const livePhoneCategories = [
 ];
 let currentBrowse = null;
 let browsePage = 0;
+let browseRowCount = 0;
+let fileCategory = 'files';
+let fileFolder = '';
 let phonePanelKey = null;
 let phoneSpecsRequest = null;
 let dialogPhone = null;
@@ -486,23 +491,59 @@ const phonePageSize = 80;
 function clearPhoneResults() {
   currentBrowse = null;
   browsePage = 0;
+  browseRowCount = 0;
+  fileFolder = '';
   el('phone-live-query').value = '';
-  el('phone-live-results').hidden = true;
+  el('phone-live-count').textContent = '';
+  el('phone-files-location').replaceChildren();
   el('phone-live-rows').replaceChildren();
 }
 
 function renderPhoneResults() {
   if (!currentBrowse) return;
   const query = el('phone-live-query').value.trim().toLowerCase();
-  const matches = currentBrowse.report.entries
-    .map((entry, index) => ({entry, index}))
-    .filter(({entry}) => entry.path.toLowerCase().includes(query));
-  const pages = Math.max(1, Math.ceil(matches.length / phonePageSize));
+  const folders = new Map();
+  const files = [];
+  const tree = fileCategory === 'files';
+  const prefix = fileFolder ? `${fileFolder}/` : '';
+  for (const [index, entry] of currentBrowse.entries.entries()) {
+    if (!entry.path.startsWith(prefix) || !entry.path.toLowerCase().includes(query)) continue;
+    const relative = entry.path.slice(prefix.length);
+    const separator = relative.indexOf('/');
+    if (tree && !query && separator >= 0) {
+      const name = relative.slice(0, separator);
+      folders.set(name, (folders.get(name) || 0) + 1);
+    } else {
+      files.push({entry, index, name:relative});
+    }
+  }
+  const rows = [...folders].sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, count]) => ({name, count})).concat(files);
+  browseRowCount = rows.length;
+  const pages = Math.max(1, Math.ceil(rows.length / phonePageSize));
   browsePage = Math.min(browsePage, pages - 1);
-  el('phone-live-count').textContent = `${number.format(matches.length)} files · Page ${browsePage + 1} of ${pages}${currentBrowse.report.partial ? ' · Partial listing' : ''}`;
-  el('phone-live-rows').replaceChildren(...matches.slice(browsePage * phonePageSize, (browsePage + 1) * phonePageSize).map(({entry, index}) => {
+  const parts = fileFolder ? fileFolder.split('/') : [];
+  el('phone-files-location').replaceChildren(...(tree ? ['Shared storage', ...parts].map((label, index) => {
+    const button = text('button', label);
+    button.dataset.action = '';
+    if (index === parts.length) button.setAttribute('aria-current', 'location');
+    button.addEventListener('click', () => openSharedFolder(parts.slice(0, index).join('/')));
+    return button;
+  }) : []));
+  const folderCount = folders.size ? `${number.format(folders.size)} folders · ` : '';
+  el('phone-live-count').textContent = `${folderCount}${number.format(files.length)} files · Page ${browsePage + 1} of ${pages}${currentBrowse.partial ? ' · Partial listing' : ''}`;
+  el('phone-live-rows').replaceChildren(...rows.slice(browsePage * phonePageSize, (browsePage + 1) * phonePageSize).map(({entry, index, name, count}) => {
     const row = text('tr', '');
     const actions = text('td', '');
+    if (!entry) {
+      const label = text('td', '');
+      const button = text('button', `▰  ${name}`, 'phone-folder-link');
+      button.dataset.action = '';
+      button.addEventListener('click', () => openSharedFolder(prefix + name));
+      label.append(button);
+      row.append(label, text('td', 'Folder'), text('td', `${number.format(count)} files`, 'muted'));
+      return row;
+    }
     const save = text('button', 'Save copy');
     save.dataset.action = '';
     save.setAttribute('aria-label', `Save ${entry.path}`);
@@ -511,24 +552,54 @@ function renderPhoneResults() {
       return report ? `Saved ${size(report.length)} · Verified SHA-256 ${report.sha256}` : '';
     }));
     actions.append(save);
-    row.append(text('td', entry.path), text('td', catalogueNames[entry.category]), actions);
+    const label = text('td', name);
+    label.title = entry.path;
+    row.append(label, text('td', catalogueNames[entry.category] || 'Other'), actions);
     return row;
   }));
   controls();
 }
 
-function browsePhone(phone, title, category) {
-  run(`Reading ${title.toLowerCase()} on ${phone.name}…`, async () => {
+function openSharedFolder(path) {
+  fileFolder = path;
+  browsePage = 0;
+  el('phone-live-query').value = '';
+  renderPhoneResults();
+}
+
+function openPhoneFiles(phone, category) {
+  run('Opening the phone file manager…', () => invoke('open_phone_window', {transport:phone.transport, id:phone.target, category}));
+}
+
+function loadPhoneFiles(category) {
+  fileCategory = category;
+  run('Reading shared files…', async () => {
     clearPhoneResults();
-    const report = await invoke('browse_phone', {transport:phone.transport, id:phone.target, category});
-    currentBrowse = {report};
-    el('phone-live-title').textContent = `${title} on ${phone.name}`;
-    el('phone-live-results').hidden = false;
+    for (const button of el('phone-files-categories').children) {
+      button.setAttribute('aria-pressed', String(button.dataset.category === category));
+    }
+    await loadPhones();
+    const phone = currentPhone();
+    if (!phone || !readyPhone(phone)) {
+      el('phone-files-device').textContent = 'Reconnect the assigned phone and select Refresh files.';
+      return '';
+    }
+    el('phone-files-device').textContent = `${phone.name} · ${phone.transport === 'android' ? 'USB' : 'Paired Wi-Fi'}`;
+    currentBrowse = await invoke('browse_phone', {transport:phone.transport, id:phone.target, category});
     renderPhoneResults();
-    el('phone-live-results').scrollIntoView({behavior:'smooth', block:'nearest'});
   });
 }
 
+for (const [symbol, title, category] of [livePhoneCategories.at(-1), ...livePhoneCategories.slice(0, -1)]) {
+  const button = text('button', `${symbol} ${title}`);
+  button.dataset.action = '';
+  button.dataset.category = category;
+  button.setAttribute('aria-pressed', 'false');
+  button.addEventListener('click', () => loadPhoneFiles(category));
+  el('phone-files-categories').append(button);
+}
+el('phone-files-refresh').addEventListener('click', () => loadPhoneFiles(fileCategory));
+el('phone-files-details').addEventListener('click', () => openPhoneDetails(currentPhone()));
 el('phone-live-query').addEventListener('input', () => { browsePage = 0; renderPhoneResults(); });
 el('phone-live-prev').addEventListener('click', () => { browsePage = Math.max(0, browsePage - 1); renderPhoneResults(); });
 el('phone-live-next').addEventListener('click', () => { browsePage++; renderPhoneResults(); });
@@ -588,6 +659,7 @@ function requestPhoneSpecs(phone, force = false) {
   const request = {key};
   phoneSpecsRequest = request;
   el('phone-live-spec-state').textContent = 'Reading device details…';
+  el('phone-details-status').textContent = 'Reading device details…';
   invoke('android_details', {id:phone.target, transport:phone.transport}).then(report => {
     if (phoneSpecsRequest !== request || selectedPhone !== key) return;
     const {properties, memory, battery_percent:battery, display, shared_storage:storage} = report;
@@ -598,6 +670,16 @@ function requestPhoneSpecs(phone, force = false) {
       ['Battery charge', battery == null ? null : `${battery}%`], ['Build', properties.build],
       ['Security patch', properties.security_patch], ['Connection', phone.transport === 'android' ? 'USB' : 'Paired Wi-Fi']];
     describe('phone-live-specs', fields.filter(([, value]) => value != null && value !== ''));
+    describe('phone-details-fields', [
+      ...fields, ['Device target', phone.target],
+      ['Battery status', report.battery_status], ['Battery health', report.battery_health],
+      ['Battery temperature', report.battery_temperature_c == null ? null : `${report.battery_temperature_c} °C`],
+      ['Display density', report.display_density == null ? null : `${report.display_density} dpi`],
+      ['Board', properties.board], ['Supported ABIs', properties.abis],
+      ['Shared storage capacity', storage && size(storage.capacity)],
+      ['Shared storage available', storage && size(storage.available)],
+    ].map(([label, value]) => [label, value || 'Unavailable']));
+    el('phone-details-status').textContent = '';
     el('phone-live-specs').hidden = false;
     el('phone-live-spec-state').textContent = '';
     el('phone-overview-storage').hidden = !storage;
@@ -609,10 +691,18 @@ function requestPhoneSpecs(phone, force = false) {
   }).catch(error => {
     if (phoneSpecsRequest !== request || selectedPhone !== key) return;
     el('phone-live-spec-state').textContent = typeof error === 'string' ? error : error.message;
+    el('phone-details-status').textContent = el('phone-live-spec-state').textContent;
   });
 }
 
 const currentPhone = () => [...usbPhones, ...wirelessPhones].find(phone => phoneKey(phone) === selectedPhone);
+
+function openPhoneDetails(phone) {
+  if (!phone || !readyPhone(phone) || !phone.transport.startsWith('android')) return;
+  el('phone-details-device').textContent = phone.name;
+  el('phone-details-dialog').showModal();
+  requestPhoneSpecs(phone);
+}
 
 function renderPhoneDetails(phone) {
   const key = phone ? JSON.stringify([phoneKey(phone), phone.state]) : null;
@@ -624,7 +714,8 @@ function renderPhoneDetails(phone) {
     el('phone-live-specs').replaceChildren();
     el('phone-live-spec-state').textContent = '';
     el('phone-overview-storage').hidden = true;
-    el('phone-browse-options').open = false;
+    el('phone-details-fields').replaceChildren();
+    if (el('phone-details-dialog').open) el('phone-details-dialog').close();
   }
   el('phone-detail').hidden = !phone;
   if (!phone) return;
@@ -633,11 +724,10 @@ function renderPhoneDetails(phone) {
   const android = readyPhone(phone) && phone.transport.startsWith('android');
   const usbAndroid = android && phone.transport === 'android';
   el('phone-drop-target').hidden = !usbAndroid;
-  el('phone-refresh-specs').hidden = !android;
-  el('phone-browse-options').hidden = !android;
+  el('phone-open-details').hidden = !android;
   const actions = [];
   if (android) {
-    actions.push(phoneCategoryButton('▤', 'Browse files', 'Read shared storage', () => browsePhone(phone, 'Files', 'files')));
+    actions.push(phoneCategoryButton('▤', 'Browse files', 'Open file manager', () => openPhoneFiles(phone, 'files')));
     actions.push(phoneCategoryButton('⊞', 'Backup device', 'Choose capture scope', () => capturePhoneCategory(phone, preferences.scope)));
     actions.push(phoneCategoryButton('↓', 'Export shared files', 'Save a verified capture', () => capturePhoneCategory(phone, 'shared')));
     if (usbAndroid) {
@@ -666,14 +756,13 @@ function renderPhoneDetails(phone) {
     showView('capture');
   }));
   el('phone-quick-actions').replaceChildren(...actions);
-  el('phone-categories').replaceChildren(...(android ? livePhoneCategories.map(([symbol, title, category]) =>
-    phoneCategoryButton(symbol, title, 'Browse on phone', () => browsePhone(phone, title, category))) : []));
   el('phone-export-categories').replaceChildren(...exportPhoneCategories.map(([symbol, title, category, query]) =>
     phoneCategoryButton(symbol, title, 'Open from an export', () => phoneExportCategory(phone, category, query))));
   if (!el('my-devices').hidden) requestPhoneSpecs(phone);
 }
 
 el('phone-refresh-specs').addEventListener('click', () => requestPhoneSpecs(currentPhone(), true));
+el('phone-open-details').addEventListener('click', () => openPhoneDetails(currentPhone()));
 el('phone-drop-target').addEventListener('click', () => selectQuickTransfer(currentPhone()));
 
 function phoneKey(phone) { return JSON.stringify([phone.transport, phone.target, phone.name]); }
@@ -736,7 +825,7 @@ function renderPhones() {
       const shortcut = text('button', '', 'phone-sidebar-category');
       shortcut.dataset.action = '';
       shortcut.append(text('span', symbol, 'phone-sidebar-icon'), text('span', title));
-      shortcut.addEventListener('click', () => browsePhone(phone, title, category));
+      shortcut.addEventListener('click', () => openPhoneFiles(phone, category));
       return shortcut;
     })];
   }).flat());
@@ -1190,7 +1279,7 @@ function renderTransferChoices() {
       : 'Choose a connected Android phone or a local export folder.';
   el('transfer-target-state').textContent = samePhone
     ? 'Choose a different phone.'
-    : targetPhone ? 'The encrypted archive will appear in Downloads.'
+    : targetPhone ? 'The archive will appear in Downloads.'
       : target.value === 'computer' ? 'Choose where to save the archive when you start.'
         : 'Choose a different Android phone or save the archive for later.';
   el('transfer-selection-note').textContent = sourcePhone
@@ -1198,7 +1287,7 @@ function renderTransferChoices() {
     : fromFiles ? 'The archive includes the files you selected.'
       : fromExport ? 'Review files to choose individual items. The default is all compatible files in the folder.'
       : 'Choose a source to see its file options.';
-  el('start-transfer').textContent = target.value === 'computer' ? 'Save encrypted archive' : 'Start transfer';
+  el('start-transfer').textContent = target.value === 'computer' ? 'Save archive' : 'Start transfer';
   controls();
 }
 
@@ -1305,11 +1394,13 @@ el('start-transfer').addEventListener('click', () => {
   const from = phone
     ? {kind:'android', id:phone.id, folders:chosenCloneFolders()}
     : el('transfer-source').value === 'files' ? {kind:'files'} : {kind:'export', selection:cloneList === null ? null : [...cloneSelection]};
-  run(target ? 'Creating and transferring the encrypted archive…' : 'Preparing the encrypted archive…', async () => {
+  run(target ? 'Creating and transferring the archive…' : 'Preparing the archive…', async () => {
     const password = el('password').value;
-    if (!/^[ -~]{12,128}$/.test(password)) throw Error('Enter a passphrase of 12–128 printable ASCII characters.');
     if (password !== el('confirm-password').value) throw Error('The passphrases do not match.');
-    if (target && !window.confirm(`Send an encrypted archive to ${target.model?.replaceAll('_', ' ') || 'Android phone'} (${target.id})?`)) return;
+    if (password && !/^[ -~]{12,128}$/.test(password)) throw Error('Enter a passphrase of 12–128 printable ASCII characters.');
+    const protection = password ? 'an encrypted' : 'an unencrypted';
+    if (target && !window.confirm(`Send ${protection} archive to ${target.model?.replaceAll('_', ' ') || 'Android phone'} (${target.id})?`)) return;
+    if (!target && !password && !window.confirm('Save an unencrypted archive? Anyone with access to the archive can read its files.')) return;
     el('password').value = '';
     el('confirm-password').value = '';
     el('transfer-result-card').hidden = true;
@@ -1317,11 +1408,13 @@ el('start-transfer').addEventListener('click', () => {
     if (!result) return;
     const missing = result.unavailable_folders.length ? ` Unavailable folders: ${result.unavailable_folders.join(', ')}.` : '';
     el('transfer-result-title').textContent = result.delivery ? 'Archive delivered and verified' : 'Archive saved';
-    el('transfer-result').textContent = `${number.format(result.backup.files)} files · ${size(result.backup.archive_bytes)} encrypted archive.${missing}`;
+    const unencrypted = result.backup.format === 'OMNIBK00';
+    el('transfer-result').textContent = `${number.format(result.backup.files)} files · ${size(result.backup.archive_bytes)} ${unencrypted ? 'unencrypted' : 'encrypted'} archive.${missing}`;
     el('transfer-result-path').textContent = result.delivery ? result.path.replace(/^\/sdcard\/Download\//, 'Downloads / ') : result.path;
-    el('transfer-result-next').textContent = result.delivery
-      ? 'On the target, open the OmniRecovery companion, choose this archive in Downloads, and select Verify and restore files.'
+    const restoreHelp = result.delivery
+      ? 'On the target, choose this archive from Downloads in the OmniRecovery companion and select Verify and restore files.'
       : 'Copy the archive to the receiving Android phone and open it in the OmniRecovery companion.';
+    el('transfer-result-next').textContent = restoreHelp + (unencrypted ? ' Use companion 0.3.10 or newer and leave the passphrase blank.' : ' Enter the same passphrase to restore it.');
     el('transfer-result-card').hidden = false;
   });
 });
@@ -1488,6 +1581,39 @@ for (const [id, kind] of [['save-catalogue-report', 'catalogue'], ['save-securit
   }));
 }
 
+for (const part of ['export', 'checkout', 'python']) {
+  pick(`pick-leapp-${part}`, `leapp_${part}`, `leapp-${part}-name`, () => {
+    el('external-forensic-result').hidden = true;
+  });
+}
+
+function showExternalReport(result, title) {
+  if (!result) return '';
+  el('external-forensic-title').textContent = title;
+  el('external-forensic-location').textContent = `${number.format(result.files)} verified report files · ${result.output}`;
+  const preview = el('external-forensic-preview');
+  preview.hidden = typeof result.preview !== 'string';
+  preview.textContent = result.preview || 'No deleted entries reported.';
+  el('external-forensic-result').hidden = false;
+  el('external-forensic-result').scrollIntoView({block:'nearest'});
+  return 'Report saved.';
+}
+
+el('run-tsk').addEventListener('click', () => run('Scanning the selected image for deleted entries…', async () => {
+  const offset = el('tsk-offset').value.trim();
+  const sectorOffset = Number(offset || 0);
+  if (!/^\d*$/.test(offset) || !Number.isSafeInteger(sectorOffset)) throw Error('Enter a valid nonnegative filesystem start sector.');
+  el('external-forensic-result').hidden = true;
+  return showExternalReport(await invoke('list_deleted_evidence', {sectorOffset, sectorSize:Number(el('tsk-sector').value)}), 'Deleted filesystem entries');
+}));
+
+el('run-leapp').addEventListener('click', () => run('Analyzing the selected phone export…', async () => {
+  el('external-forensic-result').hidden = true;
+  return showExternalReport(await invoke('analyze_phone_artifacts', {
+    mode:el('leapp-mode').value, scriptSha256:el('leapp-digest').value.trim(),
+  }), 'Mobile artifact reports');
+}));
+
 document.addEventListener('view-changed', ({detail}) => {
   if (busy) return;
   if (detail === 'my-devices') {
@@ -1536,4 +1662,5 @@ invoke('tool_startup').then(tool => {
     scanSourceChanged();
   }
   showView(tool.view);
+  if (tool.phone_category) loadPhoneFiles(tool.phone_category);
 }).catch(error => status(typeof error === 'string' ? error : error.message, 'error'));

@@ -789,7 +789,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             archive,
             destination,
         }) => {
-            let password = Zeroizing::new(rpassword::prompt_password("Backup passphrase: ")?);
+            let password = Zeroizing::new(rpassword::prompt_password(
+                "Backup passphrase (leave blank for an unencrypted archive): ",
+            )?);
             let report = omnirecovery::restore_files(&archive, &destination, &password)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }

@@ -12,6 +12,8 @@ OmniRecovery can take authorized exports or raw images, run a selected upstream 
 
 ## Available adapters
 
+In the desktop app, open **Forensics → Mobile artifact analysis**. Choose the source type, export folder, trusted parser checkout, and Python executable. Enter the trusted SHA-256 for `aleapp.py` or `ileapp.py`, then select **Analyze artifacts** and a destination folder. For Sleuth Kit, select a raw image under **Evidence source**, set its filesystem start sector and sector size, then choose **List deleted entries**. The desktop displays a plain-text preview of the listing and the complete report’s location.
+
 | Tool | Source | Result |
 | --- | --- | --- |
 | ALEAPP | Saved Android filesystem export | Upstream artifact reports with the entrypoint digest and source manifest digest |
@@ -66,7 +68,7 @@ Reviewed on 2026-11-12 using upstream repositories, documentation, and license f
 
 ## Implementation sequence
 
-1. **Make existing integrations accessible.** Add a Forensics source selector for an Android export, an iOS backup, a disk image, or an imported report. Show helper availability and exact tool version. Retain the existing CLI entry points. Validate the ALEAPP/iLEAPP adapters with real pinned upstream releases and compare their results to direct invocation. Keep the already exercised Sleuth Kit FAT fixture as a regression check.
+1. **Qualify the Forensics integrations.** The desktop and CLI accept Android exports, iOS backups, and disk images. Add imported report review and helper availability checks. Validate the ALEAPP/iLEAPP adapters with real pinned upstream releases and compare their results to direct invocation. Keep the already exercised Sleuth Kit FAT fixture as a regression check.
 2. **Standardize provenance.** Store the source digest, tool/version, argument profile, read scope, original report digest, and per-item evidence location. Display items as active files, deleted metadata, carved candidates, thumbnails, or fully verified exports as supported by their evidence. Treat gaps and unavailable regions as observations. Open HTML reports as external files or show parsed fields without executing upstream report content in the desktop app.
 3. **Add mobile record and disk recovery coverage.** Implement FQLite-backed review on copied SQLite databases and sidecars, import the mobile collectors’ exports, and add selected `icat` extraction. Verify source integrity and output SHA-256. Test unavailable permissions, encrypted inputs, unsupported schemas, missing sidecars, and files whose extents have been reused.
 4. **Compare independent methods.** Evaluate RecoverKit and OmniForensix-Mobile on named artifacts. Benchmark PhotoRec, Digler, and Data Recovery Using Python on the same images. Track recall, wrong matches, time, peak memory, and whether each result includes original path or offset. Keep TestDisk partition inspection, RecoverPy block search, and Volatility report import tied to their own evidence types.

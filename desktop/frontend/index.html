@@ -37,7 +37,7 @@
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span><span class="nav-label">Automation</span></button>
         <button class="nav-button" data-view="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.9</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.10</span></div>
     </aside>
 
     <main>
@@ -52,7 +52,7 @@
         <div class="tool-grid">
           <button class="tool-tile" data-jump="my-devices"><span class="tile-icon">▯</span><strong>My devices</strong><span>Choose a phone and its USB or wireless workflow.</span></button>
           <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
-          <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Copy files between Android phones or save an encrypted archive.</span></button>
+          <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Copy files between Android phones or save a transfer archive.</span></button>
           <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Run evidence scans, verification, and phone-export review.</span></button>
           <button class="tool-tile" data-jump="service"><span class="tile-icon">⚙</span><strong>Device service</strong><span>Open dedicated Android and iPhone &amp; iPad service pages.</span></button>
           <button class="tool-tile" data-jump="mirror"><span class="tile-icon">▱</span><strong>Screen mirror</strong><span>Preview an Android screen or camera over USB or Wi-Fi.</span></button>
@@ -101,7 +101,7 @@
             <div class="phone-overview-info">
               <div class="section-top">
                 <div><h2 id="phone-name"></h2><p class="muted" id="phone-state"></p></div>
-                <div class="actions"><button data-action id="phone-refresh-specs" hidden>Refresh details</button><button data-action id="phone-authorize">Connection setup</button></div>
+                <div class="actions"><button data-action id="phone-open-details" hidden>Device details</button><button data-action id="phone-authorize">Connection setup</button></div>
               </div>
               <p class="muted" id="phone-live-spec-state" aria-live="polite"></p>
               <dl class="phone-overview-specs" id="phone-live-specs" hidden></dl>
@@ -116,12 +116,6 @@
             <h3>Quick start</h3>
             <div class="phone-category-grid" id="phone-quick-actions"></div>
           </div>
-          <details class="phone-export-options" id="phone-browse-options"><summary>Browse shared files by category</summary><div class="phone-category-grid" id="phone-categories"></div></details>
-          <section class="phone-browse-results" id="phone-live-results" aria-labelledby="phone-live-title" hidden>
-            <div class="section-top"><div><h3 id="phone-live-title"></h3><p class="muted" id="phone-live-count" aria-live="polite"></p></div><label>Filter filenames<input id="phone-live-query" type="search" maxlength="256"></label></div>
-            <div class="table-wrap"><table><thead><tr><th>Shared file</th><th>Type</th><th>Export</th></tr></thead><tbody id="phone-live-rows"></tbody></table></div>
-            <div class="actions"><button data-action id="phone-live-prev">Previous</button><button data-action id="phone-live-next">Next</button></div>
-          </section>
           <details class="phone-export-options"><summary>Review a saved export</summary><div class="phone-category-grid" id="phone-export-categories"></div></details>
         </section>
         <dialog id="phone-connect-dialog" class="connection-dialog" aria-labelledby="phone-connect-title">
@@ -136,9 +130,27 @@
         </dialog>
         <dialog id="phone-companion-dialog" class="connection-dialog" aria-labelledby="phone-companion-title">
           <h2 id="phone-companion-title">Restore in the Android companion</h2>
-          <ol><li>Open OmniRecovery on the receiving Android phone.</li><li>Choose the transferred .omnibackup file from Downloads.</li><li>Enter the archive passphrase, choose a destination folder, and select Verify and restore files.</li></ol>
+          <ol><li>Open OmniRecovery on the receiving Android phone.</li><li>Choose the transferred .omnibackup file from Downloads.</li><li>Enter a passphrase if you encrypted the archive. Choose a destination folder and select Verify and restore files.</li></ol>
+          <p>Install the Android companion APK from the matching OmniRecovery release. Use version 0.3.10 or newer for unencrypted transfers.</p>
           <form method="dialog" class="actions"><button>Close</button></form>
         </dialog>
+      </section>
+
+      <dialog id="phone-details-dialog" class="connection-dialog phone-details-dialog" aria-labelledby="phone-details-title">
+        <div class="section-top"><div><h2 id="phone-details-title">Device details</h2><p class="muted" id="phone-details-device"></p></div><button data-action id="phone-refresh-specs">Refresh</button></div>
+        <p class="muted" id="phone-details-status" aria-live="polite"></p>
+        <dl id="phone-details-fields" class="phone-overview-specs"></dl>
+        <form method="dialog" class="actions"><button>Close</button></form>
+      </dialog>
+
+      <section id="phone-files" class="view" aria-labelledby="phone-live-title" hidden>
+        <header class="section-top"><div><h1 id="phone-live-title">Phone file manager</h1><p id="phone-files-device">Checking the assigned phone…</p></div><div class="actions"><button data-action id="phone-files-details" disabled>Device details</button><button data-action id="phone-files-refresh">Refresh files</button></div></header>
+        <section class="card phone-browse-results" aria-label="Shared files">
+          <div class="file-manager-controls"><div class="file-manager-categories" id="phone-files-categories" role="group" aria-label="File categories"></div><label>Find files<input id="phone-live-query" type="search" maxlength="256" placeholder="Search by name or path"></label></div>
+          <div class="file-manager-location"><nav id="phone-files-location" aria-label="Shared folder path"></nav><p class="muted" id="phone-live-count" aria-live="polite"></p></div>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Export</th></tr></thead><tbody id="phone-live-rows"></tbody></table></div>
+          <div class="actions"><button data-action id="phone-live-prev">Previous</button><button data-action id="phone-live-next">Next</button></div>
+        </section>
       </section>
 
       <section id="devices" class="view storage-view" aria-labelledby="devices-title" hidden>
@@ -273,7 +285,7 @@
 
       <section id="transfer" class="view" aria-labelledby="transfer-title" hidden>
         <header class="section-top">
-          <div><h1 id="transfer-title">Phone clone</h1><p>Copy selected files to another Android phone or save an encrypted archive.</p></div>
+          <div><h1 id="transfer-title">Phone clone</h1><p>Copy selected files to another Android phone or save a transfer archive.</p></div>
           <button data-action id="refresh-transfer-phones">Refresh USB phones</button>
         </header>
         <p class="muted" id="transfer-phone-status" aria-live="polite">Connect your phones by USB and approve USB debugging.</p>
@@ -314,9 +326,9 @@
           <div class="table-wrap"><table><thead><tr><th>Copy</th><th>File</th><th>Category</th></tr></thead><tbody id="transfer-rows"></tbody></table></div>
         </section>
         <section class="card output-card transfer-submit">
-          <h2>Encrypt and transfer</h2>
-          <div class="passwords"><label>Archive passphrase<input id="password" type="password" autocomplete="off" maxlength="128"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div>
-          <p class="muted">Use 12–128 printable ASCII characters. Enter the same passphrase in the Android companion to restore the files.</p>
+          <h2>Transfer options</h2>
+          <div class="passwords"><label>Archive passphrase (optional)<input id="password" type="password" autocomplete="off" maxlength="128" aria-describedby="transfer-password-help"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div>
+          <p class="muted" id="transfer-password-help">Leave both fields blank to transfer without encryption. To encrypt the archive, enter matching passphrases of 12–128 printable ASCII characters.</p>
           <button class="primary" data-action id="start-transfer" disabled>Start transfer</button>
         </section>
         <section class="card output-card transfer-done" id="transfer-result-card" hidden aria-live="polite">
@@ -437,6 +449,26 @@
         <section class="card output-card"><h2>Scan acquired disk image</h2><div class="scan-options"><label>Media to scan<select id="evidence-media"><option value="">All supported media</option><option value="jpeg">JPEG photo</option><option value="png">PNG photo</option><option value="mp4">MP4 video</option><option value="mov">MOV video</option><option value="wav">WAV audio (PCM)</option></select></label><label>Byte offset<input id="evidence-offset" inputmode="numeric" placeholder="0"></label><label>Byte length<input id="evidence-length" inputmode="numeric" placeholder="To end of image"></label><button data-action class="primary" id="scan-evidence">Run forensic scan</button></div></section>
         <section class="card output-card" id="evidence-output" hidden><div class="section-top"><h2 id="evidence-report-title">Evidence report</h2><button data-action id="save-evidence-report">Export JSON report</button></div><dl id="evidence-detail"></dl><p class="muted">This standalone report is unsigned.</p></section>
         <section class="card output-card"><div class="section-top"><div><h2>Review phone exports</h2><p>Find exported SMS, calls, contacts, mail, WhatsApp, Messenger, and device information by filename.</p></div><div class="actions"><button class="jump-button" data-jump="scan" data-scan-source="android_export">Android export</button><button class="jump-button" data-jump="scan" data-scan-source="ios_export">iOS export</button></div></div></section>
+        <section class="card output-card">
+          <h2>Deleted entries · The Sleuth Kit</h2>
+          <p class="muted">Select a raw image above. This uses the installed `fls` helper to list deleted filesystem entries.</p>
+          <div class="scan-options"><label>Filesystem start sector<input id="tsk-offset" inputmode="numeric" value="0"></label><label>Sector size<select id="tsk-sector"><option value="512">512 bytes</option><option value="4096">4096 bytes</option></select></label><button data-action class="primary" id="run-tsk">List deleted entries</button></div>
+        </section>
+        <section class="card output-card">
+          <h2>Mobile artifact analysis</h2>
+          <p class="muted">Use a trusted ALEAPP or iLEAPP checkout with its Python dependencies installed. Reports are saved from a verified copy of the export.</p>
+          <div class="passwords"><label>Analysis profile<select id="leapp-mode"><option value="android">Android filesystem · ALEAPP</option><option value="ios_filesystem">iOS filesystem · iLEAPP</option><option value="ios_backup">Unencrypted Finder or iTunes backup · iLEAPP</option></select></label><label>Trusted entrypoint SHA-256<input id="leapp-digest" maxlength="64" placeholder="64 hexadecimal characters"></label></div>
+          <div class="forensic-sources">
+            <div><button data-action id="pick-leapp-export">Choose export folder</button><p class="muted" id="leapp-export-name"></p></div>
+            <div><button data-action id="pick-leapp-checkout">Choose parser checkout</button><p class="muted" id="leapp-checkout-name"></p></div>
+            <div><button data-action id="pick-leapp-python">Choose Python executable</button><p class="muted" id="leapp-python-name"></p></div>
+          </div>
+          <div class="actions"><button data-action class="primary" id="run-leapp">Analyze artifacts</button></div>
+        </section>
+        <section class="card output-card" id="external-forensic-result" hidden>
+          <h2 id="external-forensic-title"></h2><p class="muted transfer-path" id="external-forensic-location"></p>
+          <pre id="external-forensic-preview" hidden aria-label="Deleted-entry report preview"></pre>
+        </section>
       </section>
 
       <section id="security" class="view" aria-labelledby="security-title" hidden>

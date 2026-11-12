@@ -17,6 +17,8 @@ pub(super) struct ToolStart {
     scan_source: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     phone: Option<PhoneStart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phone_category: Option<&'static str>,
     #[serde(skip)]
     title: &'static str,
 }
@@ -76,6 +78,7 @@ fn tool(view: &str, source: Option<&str>) -> Result<ToolStart, &'static str> {
         view,
         scan_source,
         phone: None,
+        phone_category: None,
         title,
     })
 }
@@ -104,8 +107,34 @@ fn phone_tool(transport: Transport, id: String) -> Result<ToolStart, &'static st
         view: "my-devices",
         scan_source: None,
         phone: Some(PhoneStart { transport, id }),
+        phone_category: None,
         title: "Phone workspace",
     })
+}
+
+fn phone_start(
+    transport: Transport,
+    id: String,
+    category: Option<&str>,
+) -> Result<ToolStart, &'static str> {
+    let mut target = phone_tool(transport, id)?;
+    if let Some(category) = category {
+        if transport == Transport::Ios {
+            return Err("Choose an Android phone for live file browsing.");
+        }
+        target.phone_category = Some(match category {
+            "files" => "files",
+            "photos" => "photos",
+            "videos" => "videos",
+            "music" => "music",
+            "documents" => "documents",
+            "downloads" => "downloads",
+            _ => return Err("Unknown phone file category."),
+        });
+        target.view = "phone-files";
+        target.title = "Phone file manager";
+    }
+    Ok(target)
 }
 
 pub(super) fn startup() -> Startup {
@@ -123,7 +152,7 @@ pub(super) fn startup() -> Startup {
             };
             transport
                 .zip(args.next())
-                .and_then(|(transport, id)| phone_tool(transport, id).ok())
+                .and_then(|(transport, id)| phone_start(transport, id, args.next().as_deref()).ok())
         }
         _ => None,
     };
@@ -166,8 +195,12 @@ pub(super) fn open_tool_window(view: String, scan_source: Option<String>) -> Res
 }
 
 #[tauri::command]
-pub(super) async fn open_phone_window(transport: Transport, id: String) -> Result<(), String> {
-    let target = phone_tool(transport, id)?;
+pub(super) async fn open_phone_window(
+    transport: Transport,
+    id: String,
+    category: Option<String>,
+) -> Result<(), String> {
+    let target = phone_start(transport, id, category.as_deref())?;
     let phone = target.phone.ok_or("Choose a phone.")?;
     super::work(move || {
         let expected = if phone.transport == Transport::Ios {
@@ -183,11 +216,13 @@ pub(super) async fn open_phone_window(transport: Transport, id: String) -> Resul
         if count != 1 {
             return Err("Reconnect the selected phone and approve its connection.".into());
         }
-        spawn_window(&[
+        let mut arguments = vec![
             "--phone-window",
             phone_transport(phone.transport)?,
             &phone.id,
-        ])
+        ];
+        arguments.extend(target.phone_category);
+        spawn_window(&arguments)
     })
     .await
 }
@@ -234,5 +269,14 @@ mod tests {
         ));
         assert_ne!(startup.capture_scope(), other.capture_scope());
         assert_eq!(Startup(None).capture_scope(), None);
+    }
+
+    #[test]
+    fn file_manager_starts_for_the_selected_android_category() {
+        let target = phone_start(Transport::Android, "PHONE-A".into(), Some("photos")).unwrap();
+        assert_eq!(target.view, "phone-files");
+        assert_eq!(target.phone_category, Some("photos"));
+        assert!(phone_start(Transport::Android, "PHONE-A".into(), Some("../media")).is_err());
+        assert!(phone_start(Transport::Ios, "PHONE-A".into(), Some("files")).is_err());
     }
 }

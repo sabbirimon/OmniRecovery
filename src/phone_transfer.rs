@@ -9,7 +9,7 @@ use crate::acquisition::run_adapter;
 use crate::android_wifi::adb_command;
 use crate::phone_browse::require_android_phone;
 use crate::source::{invalid, open_image};
-use crate::{BackupReport, Transport, backup_files, verify_file};
+use crate::{BackupReport, TransferProtection, Transport, package_transfer, verify_file};
 
 const DEVICE_CHECK: Duration = Duration::from_secs(20);
 const COPY_LIMIT: Duration = Duration::from_secs(8 * 60 * 60);
@@ -58,6 +58,21 @@ pub fn backup_android_folders(
     archive: &Path,
     password: &str,
 ) -> io::Result<PhoneBackupReport> {
+    package_android_folders(
+        id,
+        folders,
+        archive,
+        TransferProtection::Passphrase(password),
+    )
+}
+
+/// Package explicitly selected Android shared folders for phone migration.
+pub fn package_android_folders(
+    id: &str,
+    folders: &[PhoneFolder],
+    archive: &Path,
+    protection: TransferProtection<'_>,
+) -> io::Result<PhoneBackupReport> {
     if folders.is_empty()
         || folders.len() > 6
         || folders
@@ -69,7 +84,7 @@ pub fn backup_android_folders(
             "select at least one distinct Android shared folder",
         ));
     }
-    crate::backup::validate_password(password)?;
+    protection.validate()?;
     require_android_phone(Transport::Android, id)?;
     let staging = tempfile::Builder::new()
         .prefix("omnirecovery-phone-files-")
@@ -108,21 +123,21 @@ pub fn backup_android_folders(
     if unavailable_folders.len() == folders.len() {
         return Err(invalid("none of the selected shared folders is available"));
     }
-    let backup = backup_files(staging.path(), archive, password)?;
+    let backup = package_transfer(staging.path(), archive, protection, None)?;
     Ok(PhoneBackupReport {
         backup,
         unavailable_folders,
     })
 }
 
-/// Send a local encrypted archive to a new directory on an authorized Android USB phone.
+/// Send a local migration archive to a new directory on an authorized Android USB phone.
 pub fn deliver_phone_archive(archive: &Path, id: &str) -> io::Result<PhoneDelivery> {
     if archive.extension().and_then(|value| value.to_str()) != Some("omnibackup") {
         return Err(invalid("choose a .omnibackup archive"));
     }
     let mut header = [0_u8; 8];
     open_image(archive)?.read_exact(&mut header)?;
-    if &header != crate::backup::MAGIC {
+    if &header != crate::backup::MAGIC && &header != crate::backup::UNENCRYPTED_MAGIC {
         return Err(invalid("choose an OmniRecovery file archive"));
     }
     let source = verify_file(archive)?;

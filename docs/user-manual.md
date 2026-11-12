@@ -7,7 +7,7 @@
 | macOS | Universal `.dmg` | Drag the app to Applications. Open **OmniRecovery** and select **Toolbox → Scan media → Try demo** |
 | Windows x64 | Desktop `.exe` | Start the desktop executable on a host with WebView2. The separate CLI executable emits JSON |
 | Linux x64 | Desktop and CLI `.deb`, or standalone CLI `.tar.gz` | Install the Debian package and open **OmniRecovery** from the desktop menu, or run the standalone `omnirecovery` CLI |
-| Android | Debug companion `.apk` | Open **OmniRecovery** to create, verify, or restore encrypted file archives |
+| Android | Debug companion `.apk` | Open **OmniRecovery** to create encrypted file backups or verify and restore transfer archives |
 
 See the [visual guide](visual-guide.md) for navigation. Use trusted, immutable inputs for evidence examination. The desktop distribution is a development build. The macOS bundle has no Developer ID notarization and the Android APK is debug signed.
 
@@ -42,9 +42,11 @@ In **Forensics → Review phone exports**, choose Android or iOS, select your ex
 
 ### Browse a connected Android phone
 
-Open **My devices** and select the phone. The device page reads the Android specifications and shared storage capacity. To see files, click **Photos**, **Videos**, **Music**, **Documents**, **Downloads**, or **Files**. Files appear on the same page. Use **Filter filenames** or choose **Save copy** on an individual result. The export compares the copy with a SHA-256 digest from the phone.
+Open **My devices** and select the phone. Choose **Device details** for its Android build, display, battery, memory, and shared storage. Choose **Browse files** or a category in the sidebar to open the phone’s file manager in its own window. Open folders under **Files**, use the breadcrumb to move back, or switch to **Photos**, **Videos**, **Music**, **Documents**, or **Downloads**. Use **Find files** to filter by name or path and **Save copy** to export an individual result. The export compares the copy with a SHA-256 digest from the phone.
 
 If the connection needs authorization, open **Connection setup** and complete the device prompt. Shared-file browsing uses Android USB debugging or an already paired Wireless debugging connection. It lists standard shared folders and reports when the listing reaches its limit. For private records such as SMS, calls, contacts, and chat histories, use a readable export or supported backup.
+
+To look for deleted items, check the phone's Gallery or file manager Trash and any earlier backups. **My devices** shows current shared files. For a readable image of a removable card, use `undelete-fat32` on FAT32 or `tsk-deleted` with an installed Sleuth Kit for supported filesystems. [Deleted-file recovery workflow](acquisition-and-recovery.md)
 
 ### Work on several phones
 
@@ -57,14 +59,16 @@ If an assigned phone disconnects, reconnect it and select **Refresh devices** in
 1. From the selected phone, choose **Phone clone**. You can also open it from the sidebar and select the source manually.
 2. Choose the target Android USB phone or **Save archive to this computer**. **Flip** swaps two selected USB phones.
 3. Select the shared folders to transfer. If the source is a local export, use **Review files** to select individual items.
-4. Enter an archive passphrase and start the transfer. For a connected target, OmniRecovery compares the transferred archive's SHA-256 with the desktop copy.
-5. In the Android companion on the target, select the archive from **Downloads** and choose **Verify and restore files**. The companion asks for the passphrase and output folder.
+4. Start the transfer. Leave both passphrase fields blank for an unencrypted archive, or enter matching passphrases to encrypt it. For a connected target, OmniRecovery compares the transferred archive's SHA-256 with the desktop copy.
+5. In the Android companion on the target, select the archive from **Downloads**, choose the output folder, and select **Verify and restore files**. Enter the same passphrase only if you encrypted the archive.
 
 To transfer individual computer files, use **Quick transfer** or drop them onto the phone illustration on the selected Android USB device page. The selected phone becomes the target. Review the selection and confirm the transfer.
 
-The Android companion shipped in 0.3.6 reads the same archive format. [Transfer format and setup](repair-and-transfer.md)
+Unencrypted transfers require Android companion 0.3.10 or newer. [Transfer formats and setup](repair-and-transfer.md)
 
 ## Verification, security and logs
+
+In **Forensics**, use **Deleted entries · The Sleuth Kit** with a raw image and installed `fls`. The saved report includes the image hash, helper version, and filesystem geometry. **Mobile artifact analysis** opens an Android export in ALEAPP or an iOS export or unencrypted backup in iLEAPP using a trusted local checkout and Python environment. [Forensic tools and setup](forensic-integrations.md)
 
 - **Forensics** verifies a file in two read passes, scans an acquired image using optional byte offset, length and media arguments, and clones an acquired image to a separate physical drive on macOS. Add a case identifier for the unsigned JSON report and local activity summary. The image scan reports coverage, elapsed time, findings, rejections and source SHA-256. The clone reports bytes, elapsed time and readback SHA-256. Live-device acquisition requires a separate workflow.
 - **Repair files** handles specific JPEG and PNG damage, selected PCM WAV header fields, a final `moov` or `mdat` box size in supported MP4 or MOV, and the ZIP directory size or offset of supported DOCX, XLSX and PPTX packages. It assesses files up to 16 MiB and requires a trusted original SHA-256 except for the supported PNG end-marker repair. Missing media samples, corrupt Office XML and PDFs are outside this repair scope.

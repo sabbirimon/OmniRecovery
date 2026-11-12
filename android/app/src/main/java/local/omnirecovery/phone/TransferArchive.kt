@@ -18,10 +18,14 @@ internal const val MAX_PAYLOAD = 64L * 1024 * 1024 * 1024
 internal const val MAX_ARCHIVE = MAX_PAYLOAD + 64L * 1024 * 1024
 private const val MAX_BLOCK = 1024 * 1024
 private const val MAX_FILES = 20_000
+private val ENCRYPTED_MAGIC = "OMNIBK01".toByteArray(Charsets.US_ASCII)
+private val UNENCRYPTED_MAGIC = "OMNIBK00".toByteArray(Charsets.US_ASCII)
 
 internal data class ArchiveInput(val name: String, val open: () -> InputStream)
 
 internal data class ArchiveSummary(val files: Int, val bytes: Long)
+
+internal class ArchivePassphraseError(message: String) : IOException(message)
 
 internal interface ArchiveSink {
     fun begin(path: String) {}
@@ -31,12 +35,27 @@ internal interface ArchiveSink {
 
 internal object TransferArchive {
     fun read(input: InputStream, password: CharArray, sink: ArchiveSink = object : ArchiveSink {}): ArchiveSummary {
-        validate(password.size in 12..128 && password.all { it in ' '..'~' })
         val stream = DataInputStream(input)
         val header = ByteArray(24).also(stream::readFully)
-        validate(header.copyOfRange(0, 8).contentEquals("OMNIBK01".toByteArray(Charsets.US_ASCII)))
-        val key = key(password, header)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val magic = header.copyOfRange(0, 8)
+        val key = when {
+            magic.contentEquals(ENCRYPTED_MAGIC) -> {
+                if (password.size !in 12..128 || password.any { it !in ' '..'~' }) {
+                    throw ArchivePassphraseError("Enter the passphrase used to create this encrypted archive.")
+                }
+                key(password, header)
+            }
+            magic.contentEquals(UNENCRYPTED_MAGIC) -> {
+                validate(header.copyOfRange(8, 24).all { it == 0.toByte() })
+                if (password.isNotEmpty()) {
+                    throw ArchivePassphraseError("This archive is unencrypted. Leave the passphrase blank.")
+                }
+                null
+            }
+            else -> throw IOException("Invalid or unsupported transfer archive")
+        }
+        val cipher = key?.let { Cipher.getInstance("AES/GCM/NoPadding") }
+        val checksum = if (cipher == null) MessageDigest.getInstance("SHA-256") else null
         val paths = HashSet<String>()
         val directories = HashMap<String, String>()
         var sequence = 0L
@@ -48,14 +67,23 @@ internal object TransferArchive {
         while (true) {
             val length = stream.readInt()
             validate(length in 1..(MAX_BLOCK + 1))
-            val encrypted = ByteArray(length + 16).also(stream::readFully)
-            val nonce = ByteBuffer.allocate(12).putInt(0).putLong(sequence).array()
             val aad = ByteBuffer.allocate(36).put(header).putLong(sequence).putInt(length).array()
-            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, nonce))
-            cipher.updateAAD(aad)
-            val record = cipher.doFinal(encrypted)
+            val record = if (cipher != null) {
+                val encrypted = ByteArray(length + 16).also(stream::readFully)
+                val nonce = ByteBuffer.allocate(12).putInt(0).putLong(sequence).array()
+                cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, nonce))
+                cipher.updateAAD(aad)
+                cipher.doFinal(encrypted)
+            } else {
+                ByteArray(length).also(stream::readFully)
+            }
             sequence++
             try {
+                if (checksum != null) {
+                    val expected = ByteArray(32).also(stream::readFully)
+                    checksum.update(aad)
+                    validate(MessageDigest.isEqual(expected, checksum.digest(record)))
+                }
                 val data = ByteBuffer.wrap(record, 1, record.size - 1)
                 when (record[0].toInt()) {
                     1 -> {
@@ -117,7 +145,7 @@ internal object TransferArchive {
             validate(portableSegment(file.name) && names.add(asciiFold(file.name)))
         }
         val header = ByteArray(24).also { SecureRandom().nextBytes(it) }
-        "OMNIBK01".toByteArray(Charsets.US_ASCII).copyInto(header)
+        ENCRYPTED_MAGIC.copyInto(header)
         val stream = DataOutputStream(output)
         stream.write(header)
         val key = key(password, header)

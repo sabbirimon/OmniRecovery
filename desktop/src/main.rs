@@ -40,6 +40,9 @@ enum Source {
     CaptureImage,
     BackupHistory,
     Evidence,
+    LeappExport,
+    LeappCheckout,
+    LeappPython,
     Artifact,
     Firmware,
     Security,
@@ -58,6 +61,8 @@ impl Source {
                 | Self::IosExport
                 | Self::CaptureFolder
                 | Self::BackupHistory
+                | Self::LeappExport
+                | Self::LeappCheckout
         )
     }
 }
@@ -131,7 +136,12 @@ fn selected(state: &Shared, source: Source) -> Result<PathBuf, String> {
 }
 
 fn set_source(state: &Shared, slot: Source, path: PathBuf) -> Result<Selection, String> {
-    let metadata = path.symlink_metadata().map_err(error)?;
+    let metadata = if slot == Source::LeappPython {
+        path.metadata()
+    } else {
+        path.symlink_metadata()
+    }
+    .map_err(error)?;
     if (slot.folder() && !metadata.is_dir()) || (!slot.folder() && !metadata.is_file()) {
         return Err("Choose an ordinary file or directory for this workflow.".into());
     }
@@ -477,6 +487,12 @@ async fn create_transfer(
         Vec::new()
     };
     work(move || {
+        use omnirecovery::TransferProtection;
+        let protection = if password.is_empty() {
+            TransferProtection::Unencrypted
+        } else {
+            TransferProtection::Passphrase(&password)
+        };
         let temporary = target
             .as_ref()
             .map(|_| {
@@ -492,7 +508,7 @@ async fn create_transfer(
             let path = app
                 .dialog()
                 .file()
-                .set_title("Save encrypted phone-transfer archive")
+                .set_title("Save phone-transfer archive")
                 .set_file_name("phone-transfer.omnibackup")
                 .add_filter("OmniRecovery archive", &["omnibackup"])
                 .blocking_save_file();
@@ -503,24 +519,22 @@ async fn create_transfer(
         };
         let (backup, unavailable_folders) = match source {
             TransferSource::Files => {
-                let backup = omnirecovery::backup_individual_files(&picked_files, &path, &password)
-                    .map_err(error)?;
+                let backup =
+                    omnirecovery::package_selected_computer_files(&picked_files, &path, protection)
+                        .map_err(error)?;
                 (backup, Vec::new())
             }
             TransferSource::Android { id, folders } => {
-                let result = omnirecovery::backup_android_folders(&id, &folders, &path, &password)
-                    .map_err(error)?;
+                let result =
+                    omnirecovery::package_android_folders(&id, &folders, &path, protection)
+                        .map_err(error)?;
                 (result.backup, result.unavailable_folders)
             }
             TransferSource::Export { .. } => {
                 let (directory, paths) = export.ok_or("Choose a source first.")?;
-                let backup = match paths {
-                    Some(paths) => {
-                        omnirecovery::backup_selected_files(&directory, &path, &password, &paths)
-                    }
-                    None => omnirecovery::backup_files(&directory, &path, &password),
-                }
-                .map_err(error)?;
+                let backup =
+                    omnirecovery::package_transfer(&directory, &path, protection, paths.as_deref())
+                        .map_err(error)?;
                 (backup, Vec::new())
             }
         };
@@ -815,6 +829,8 @@ fn main() {
             workflows::clone_image,
             workflows::inspect_export_records,
             workflows::verify_evidence,
+            workflows::analyze_phone_artifacts,
+            workflows::list_deleted_evidence,
             workflows::scan_evidence,
             workflows::clone_evidence,
             workflows::security_scan,

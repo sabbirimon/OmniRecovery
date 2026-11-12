@@ -28,22 +28,26 @@ The input is limited to 16 MiB and existing decoder limits apply. Use a trusted 
 3. Copy `transfer.omnibackup` to the receiving phone, for example over USB. Open the OmniRecovery Android companion, select the archive and a writable folder, and enter the same passphrase.
 4. Select **Verify and restore files**. The app authenticates the complete archive before creating a new folder. It restores the relative paths inside that folder, reads each written file back and checks its length and SHA-256. An interrupted restore can leave a new folder marked incomplete. Previous destination files are outside the restore path.
 
+In the desktop **Phone clone** workflow, you can leave both passphrase fields blank to create an unencrypted transfer archive. Open it in Android companion 0.3.10 or newer and leave the restore passphrase blank. The standalone `backup-files` command and backups created by the Android companion require a passphrase.
+
 This personal transfer workflow moves ordinary files such as photos, videos and documents. It preserves byte contents and relative paths. Empty directories, original timestamps, permissions, app-private databases, credentials, Android settings and system partitions are outside the transfer format. Android's system picker grants access only to supported user-selected locations. A raw sector clone cannot be restored onto another phone using this app. [Android Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files), [Android file-based encryption](https://source.android.com/docs/security/features/encryption/file-based)
 
 ## Archive format
 
 `OMNIBK01` starts with an eight-byte ASCII magic and a 16-byte random salt. Derive a 256-bit key using PBKDF2-HMAC-SHA256 with 600,000 iterations. Each record is a big-endian 32-bit plaintext length followed by AES-256-GCM ciphertext and a 16-byte tag. The nonce is four zero bytes followed by the big-endian 64-bit zero-based record index. Associated data consists of the header, record index and length. A new random salt yields a separate archive key. Passphrases are entered through the trusted UI and excluded from arguments, report fields and logs.
 
-The first byte of each decrypted record identifies its type.
+`OMNIBK00` is the unencrypted transfer format. The header contains the eight-byte magic and 16 zero bytes. Each record has the same four-byte length and plaintext payload, followed by a 32-byte SHA-256 checksum over the header, big-endian 64-bit record index, length and complete plaintext record. The checksums detect accidental corruption. Anyone with access to the archive can read it or modify its contents and recompute the checksums.
+
+The first byte of each plaintext record identifies its type.
 
 | Type | Payload |
 | --- | --- |
 | `1` | Relative UTF-8 file path with `/` separators |
 | `2` | One to 1,048,576 bytes of the current file |
 | `3` | Eight-byte file length and 32-byte SHA-256 of the current file |
-| `4` | Four-byte file count and eight-byte total payload length. The archive must end immediately after this authenticated record |
+| `4` | Four-byte file count and eight-byte total payload length. The archive must end immediately after this record and its tag or checksum |
 
-All integers are big-endian. The writer accepts up to 20,000 files and 64 GiB of payload. It verifies each file against the inventory before publishing the archive without overwriting an existing path. The reader bounds record lengths, rejects duplicate and case-colliding paths and verifies file hashes, record order and the authenticated end. Android temporarily stages the encrypted archive in app-private storage so a successful verification pass covers the exact bytes used for restore. The phone needs room for both the staged encrypted archive and restored files.
+All integers are big-endian. The writer accepts up to 20,000 files and 64 GiB of payload. It verifies each file against the inventory before publishing the archive without overwriting an existing path. The reader bounds record lengths, rejects duplicate and case-colliding paths, and verifies file hashes, record order, and the end of the archive. Android temporarily stages the archive in app-private storage so a successful verification pass covers the exact bytes used for restore. The phone needs room for both the staged archive and restored files.
 
 The personal archive path has no connection to a forensic case store. The high-assurance deployment requires its own authenticated case, retention and export controls.
 

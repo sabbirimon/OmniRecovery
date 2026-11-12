@@ -14,6 +14,7 @@ use crate::source::{invalid, open_image, same_file_state};
 use crate::{catalogue_file, inventory, verify_file};
 
 pub(crate) const MAGIC: &[u8; 8] = b"OMNIBK01";
+pub(crate) const UNENCRYPTED_MAGIC: &[u8; 8] = b"OMNIBK00";
 const KDF_ROUNDS: u32 = 600_000;
 const BLOCK: usize = 1024 * 1024;
 const MAX_FILES: usize = 20_000;
@@ -27,9 +28,29 @@ pub struct BackupReport {
     pub archive_bytes: u64,
 }
 
+#[derive(Clone, Copy)]
+pub enum TransferProtection<'a> {
+    Unencrypted,
+    Passphrase(&'a str),
+}
+
+impl TransferProtection<'_> {
+    pub(crate) fn validate(self) -> io::Result<()> {
+        match self {
+            Self::Passphrase(password) => validate_password(password),
+            Self::Unencrypted => Ok(()),
+        }
+    }
+}
+
 /// Create a password-protected personal migration archive from an existing file export.
 pub fn backup_files(directory: &Path, archive: &Path, password: &str) -> io::Result<BackupReport> {
-    make_backup(directory, archive, password, None)
+    package_transfer(
+        directory,
+        archive,
+        TransferProtection::Passphrase(password),
+        None,
+    )
 }
 
 /// Package only the approved relative paths from an existing export directory.
@@ -39,7 +60,12 @@ pub fn backup_selected_files(
     password: &str,
     paths: &[String],
 ) -> io::Result<BackupReport> {
-    make_backup(directory, archive, password, Some(paths))
+    package_transfer(
+        directory,
+        archive,
+        TransferProtection::Passphrase(password),
+        Some(paths),
+    )
 }
 
 /// Package explicitly selected computer files, preserving each basename.
@@ -48,7 +74,16 @@ pub fn backup_individual_files(
     archive: &Path,
     password: &str,
 ) -> io::Result<BackupReport> {
-    validate_password(password)?;
+    package_selected_computer_files(paths, archive, TransferProtection::Passphrase(password))
+}
+
+/// Package selected computer files using the requested transfer protection.
+pub fn package_selected_computer_files(
+    paths: &[PathBuf],
+    archive: &Path,
+    protection: TransferProtection<'_>,
+) -> io::Result<BackupReport> {
+    protection.validate()?;
     if paths.is_empty() || paths.len() > MAX_FILES {
         return Err(invalid("select 1–20,000 ordinary files"));
     }
@@ -84,7 +119,7 @@ pub fn backup_individual_files(
             return Err(invalid("a selected file changed while copying"));
         }
     }
-    backup_files(staging.path(), archive, password)
+    package_transfer(staging.path(), archive, protection, None)
 }
 
 pub(crate) fn validate_password(password: &str) -> io::Result<()> {
@@ -98,13 +133,14 @@ pub(crate) fn validate_password(password: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn make_backup(
+/// Package all files or selected relative paths from an export for phone migration.
+pub fn package_transfer(
     directory: &Path,
     archive: &Path,
-    password: &str,
+    protection: TransferProtection<'_>,
     paths: Option<&[String]>,
 ) -> io::Result<BackupReport> {
-    validate_password(password)?;
+    protection.validate()?;
     let file_name = archive
         .file_name()
         .ok_or_else(|| invalid("archive must have a file name"))?;
@@ -188,7 +224,7 @@ fn make_backup(
 
     let mut temporary = NamedTempFile::new_in(&parent)?;
     {
-        let mut writer = ArchiveWriter::new(temporary.as_file_mut(), password)?;
+        let mut writer = ArchiveWriter::new(temporary.as_file_mut(), protection)?;
         let mut buffer = Zeroizing::new(vec![0; BLOCK]);
         for (path, entry) in &files {
             let mut input = open_image(&catalogue_file(&source, path)?)?;
@@ -226,7 +262,10 @@ fn make_backup(
         .persist_noclobber(archive)
         .map_err(|error| error.error)?;
     Ok(BackupReport {
-        format: "OMNIBK01",
+        format: match protection {
+            TransferProtection::Unencrypted => "OMNIBK00",
+            TransferProtection::Passphrase(_) => "OMNIBK01",
+        },
         files: files.len(),
         source_bytes: total,
         archive_bytes,
@@ -271,18 +310,26 @@ fn portable_path(path: &str) -> bool {
 
 struct ArchiveWriter<W> {
     output: W,
-    cipher: Aes256Gcm,
+    cipher: Option<Aes256Gcm>,
     header: [u8; 24],
     sequence: u64,
 }
 
 impl<W: Write> ArchiveWriter<W> {
-    fn new(mut output: W, password: &str) -> io::Result<Self> {
+    fn new(mut output: W, protection: TransferProtection<'_>) -> io::Result<Self> {
         let mut header = [0; 24];
-        header[..8].copy_from_slice(MAGIC);
-        getrandom::fill(&mut header[8..])
-            .map_err(|_| io::Error::other("could not generate archive salt"))?;
-        let cipher = archive_cipher(password, &header);
+        let cipher = match protection {
+            TransferProtection::Passphrase(password) => {
+                header[..8].copy_from_slice(MAGIC);
+                getrandom::fill(&mut header[8..])
+                    .map_err(|_| io::Error::other("could not generate archive salt"))?;
+                Some(archive_cipher(password, &header))
+            }
+            TransferProtection::Unencrypted => {
+                header[..8].copy_from_slice(UNENCRYPTED_MAGIC);
+                None
+            }
+        };
         output.write_all(&header)?;
         Ok(Self {
             output,
@@ -302,17 +349,21 @@ impl<W: Write> ArchiveWriter<W> {
         let mut record = Zeroizing::new(Vec::with_capacity(1 + data.len()));
         record.push(kind);
         record.extend_from_slice(data);
-        let tag = self
-            .cipher
-            .encrypt_in_place_detached(Nonce::from_slice(&nonce), &aad, &mut record)
-            .map_err(|_| io::Error::other("could not encrypt archive record"))?;
         self.output.write_all(&length)?;
-        self.output.write_all(&record)?;
-        self.output.write_all(&tag)
+        if let Some(cipher) = &self.cipher {
+            let tag = cipher
+                .encrypt_in_place_detached(Nonce::from_slice(&nonce), &aad, &mut record)
+                .map_err(|_| io::Error::other("could not encrypt archive record"))?;
+            self.output.write_all(&record)?;
+            self.output.write_all(&tag)
+        } else {
+            self.output.write_all(&record)?;
+            self.output.write_all(&record_checksum(&aad, &record))
+        }
     }
 }
 
-/// Restore an authenticated OmniRecovery archive without overwriting existing files.
+/// Restore an OmniRecovery archive without overwriting existing files.
 pub fn restore_files(
     archive: &Path,
     destination: &Path,
@@ -322,20 +373,26 @@ pub fn restore_files(
 
     use crate::acquisition::{finish, now_ms, stage};
 
-    if !(12..=128).contains(&password.len())
-        || !password.bytes().all(|b| (0x20..=0x7e).contains(&b))
-    {
-        return Err(invalid("invalid archive passphrase format"));
-    }
     let start = now_ms();
     let mut input = open_image(archive)?;
     let state = input.metadata()?;
     let mut header = [0_u8; 24];
     input.read_exact(&mut header)?;
-    if &header[..8] != MAGIC {
-        return Err(invalid("unrecognized OmniRecovery archive"));
-    }
-    let cipher = archive_cipher(password, &header);
+    let cipher = match &header[..8] {
+        magic if magic == MAGIC => {
+            validate_password(password)?;
+            Some(archive_cipher(password, &header))
+        }
+        magic if magic == UNENCRYPTED_MAGIC && header[8..] == [0; 16] => {
+            if !password.is_empty() {
+                return Err(invalid(
+                    "this archive is unencrypted; leave the passphrase blank",
+                ));
+            }
+            None
+        }
+        _ => return Err(invalid("unrecognized OmniRecovery archive")),
+    };
     let (staging, data) = stage(destination)?;
     let mut current: Option<(String, File, u64, Sha256)> = None;
     let mut expected = BTreeMap::new();
@@ -349,18 +406,26 @@ pub fn restore_files(
             return Err(invalid("invalid archive record length"));
         }
         let mut record = Zeroizing::new(vec![0_u8; count]);
-        let mut tag = [0; 16];
         input.read_exact(&mut record)?;
-        input.read_exact(&mut tag)?;
         let (nonce, aad) = record_context(&header, sequence, encoded_len);
-        cipher
-            .decrypt_in_place_detached(
-                Nonce::from_slice(&nonce),
-                &aad,
-                &mut record,
-                aes_gcm::Tag::from_slice(&tag),
-            )
-            .map_err(|_| invalid("archive authentication failed"))?;
+        if let Some(cipher) = &cipher {
+            let mut tag = [0; 16];
+            input.read_exact(&mut tag)?;
+            cipher
+                .decrypt_in_place_detached(
+                    Nonce::from_slice(&nonce),
+                    &aad,
+                    &mut record,
+                    aes_gcm::Tag::from_slice(&tag),
+                )
+                .map_err(|_| invalid("archive authentication failed"))?;
+        } else {
+            let mut checksum = [0; 32];
+            input.read_exact(&mut checksum)?;
+            if checksum != record_checksum(&aad, &record) {
+                return Err(invalid("archive record checksum mismatch"));
+            }
+        }
         let payload = &record[1..];
         match record[0] {
             1 if current.is_none() && expected.len() < MAX_FILES => {
@@ -435,9 +500,17 @@ pub fn restore_files(
                     files,
                     "omnibackup_restore",
                     archive.display().to_string(),
-                    "authenticated archive files",
+                    if cipher.is_some() {
+                        "authenticated archive files"
+                    } else {
+                        "unencrypted archive files"
+                    },
                     start,
-                    "authenticated_records_and_local_readback_sha256",
+                    if cipher.is_some() {
+                        "authenticated_records_and_local_readback_sha256"
+                    } else {
+                        "record_checksums_and_local_readback_sha256"
+                    },
                 );
             }
             _ => return Err(invalid("unexpected archive record")),
@@ -461,6 +534,13 @@ fn record_context(header: &[u8; 24], sequence: u64, length: [u8; 4]) -> ([u8; 12
     aad[24..32].copy_from_slice(&sequence);
     aad[32..].copy_from_slice(&length);
     (nonce, aad)
+}
+
+fn record_checksum(aad: &[u8; 36], record: &[u8]) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    digest.update(aad);
+    digest.update(record);
+    digest.finalize().into()
 }
 
 #[cfg(test)]
@@ -492,6 +572,32 @@ mod restore_tests {
         drop(file);
         assert!(restore_files(&archive, &restored, password).is_err());
         assert_eq!(fs::read_dir(&restored)?.count(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn restores_unencrypted_transfer_and_rejects_changed_records() -> io::Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let source = tmp.path().join("example.txt");
+        let archive = tmp.path().join("transfer.omnibackup");
+        let destination = tmp.path().join("restored");
+        fs::write(&source, b"transfer fixture")?;
+        fs::create_dir(&destination)?;
+        assert!(backup_individual_files(&[source.clone()], &archive, "").is_err());
+        let report =
+            package_selected_computer_files(&[source], &archive, TransferProtection::Unencrypted)?;
+        assert_eq!(report.format, "OMNIBK00");
+        assert!(restore_files(&archive, &destination, "a valid passphrase").is_err());
+        let restored = restore_files(&archive, &destination, "")?;
+        assert_eq!(
+            fs::read(restored.output.join("data/example.txt"))?,
+            b"transfer fixture"
+        );
+        let mut data = fs::read(&archive)?;
+        data[29] ^= 1; // Change the archived filename without updating its record checksum.
+        fs::write(&archive, data)?;
+        assert!(restore_files(&archive, &destination, "").is_err());
+        assert_eq!(fs::read_dir(destination)?.count(), 1);
         Ok(())
     }
 }

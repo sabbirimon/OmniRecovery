@@ -2,6 +2,13 @@
 
 The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
 
+## 0.3.10 phone file manager, transfers and forensic analysis
+
+- The phone overview opens a separate file manager for its selected Android device. It supports category views, folder navigation, search, and verified exports. **Device details** opens the extended specifications panel.
+- **Phone clone** can send or save an unencrypted archive when both passphrase fields are blank. It checks the transferred archive hash and verifies file contents on restore.
+- The updated Android companion verifies and restores both transfer formats. Its own backup creation requires a passphrase.
+- **Forensics** runs the installed ALEAPP, iLEAPP, or Sleuth Kit helper against a verified staging copy and saves the resulting reports.
+
 ## 0.3.9 concurrent phone workspaces
 
 - **Open separate workspace** starts an independent window assigned to the selected phone. Workspaces have independent browse results, capture selections, and saved Before and After snapshots.

@@ -668,10 +668,21 @@ input[type=checkbox] { min-height: auto; width: 15px; height: 15px; flex: none; 
 
 .phone-detail .phone-category { white-space: normal; align-items: start; }
 .phone-detail .phone-category small { min-width: 0; overflow-wrap: anywhere; }
-.phone-browse-results { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
-.phone-browse-results .table-wrap { max-height: 460px; }
+.phone-browse-results .table-wrap { max-height: min(61vh, 660px); }
 .phone-browse-results td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .phone-browse-results .actions { margin-top: 10px; }
+.file-manager-controls, .file-manager-location { display: flex; align-items: end; flex-wrap: wrap; justify-content: space-between; gap: 12px 18px; }
+.file-manager-controls { padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+.file-manager-controls > label { flex: 1 1 160px; max-width: 285px; }
+.file-manager-categories, #phone-files-location { display: flex; flex-wrap: wrap; gap: 6px; }
+.file-manager-categories button[aria-pressed="true"] { background: #d9ecff; color: #084b95; border-color: #9bc5f5; }
+.file-manager-location { padding: 10px 0; align-items: center; }
+.file-manager-location p { margin: 0; }
+.forensic-sources { display: flex; flex-wrap: wrap; gap: 12px 18px; margin-top: 14px; }
+.forensic-sources p { margin: 5px 0; overflow-wrap: anywhere; }
+#external-forensic-preview { max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+#phone-files-location button, .phone-folder-link { padding: 5px 8px; border: 0; background: #eaf4ff; color: #174d84; }
+#phone-files-location button[aria-current="location"] { background: #d9ecff; }
 .phone-export-options { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
 .phone-export-options .phone-category-grid { margin-top: 10px; }
 .phone-sidebar .phone-sidebar-category { display: flex; align-items: center; gap: 7px; margin-left: 9px; }
@@ -681,6 +692,10 @@ input[type=checkbox] { min-height: auto; width: 15px; height: 15px; flex: none; 
 .connection-dialog ol { padding-left: 24px; }
 .connection-dialog li { margin-bottom: 8px; }
 .connection-dialog .actions { margin-top: 18px; }
+.phone-details-dialog { width: min(760px, calc(100% - 36px)); max-height: calc(100% - 36px); overflow: auto; }
+.phone-details-dialog h2 { margin: 0; }
+.phone-details-dialog .phone-overview-specs .detail:nth-child(4n + 1),
+.phone-details-dialog .phone-overview-specs .detail:nth-child(4n + 2) { background: #f1f6fc; }
 
 .phone-overview {
   display: grid;

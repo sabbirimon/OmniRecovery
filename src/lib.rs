@@ -44,7 +44,8 @@ pub use ai::{AiTriage, ai_triage};
 pub use android_wifi::{connect_android_wifi, pair_android_wifi};
 pub use artifacts::{ArtifactKind, ArtifactReport, inspect_artifact};
 pub use backup::{
-    BackupReport, backup_files, backup_individual_files, backup_selected_files, restore_files,
+    BackupReport, TransferProtection, backup_files, backup_individual_files, backup_selected_files,
+    package_selected_computer_files, package_transfer, restore_files,
 };
 pub use catalogue::{
     Catalogue, CatalogueEntry, FileCategory, catalogue, catalogue_file, verify_file,
@@ -75,6 +76,7 @@ pub use phone_browse::{
 };
 pub use phone_transfer::{
     PhoneBackupReport, PhoneDelivery, PhoneFolder, backup_android_folders, deliver_phone_archive,
+    package_android_folders,
 };
 pub use reconstruct::{ReconstructionReport, reconstruct_file};
 pub use repair::{
