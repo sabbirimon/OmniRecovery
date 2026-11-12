@@ -1,7 +1,15 @@
+mod acquisition;
+mod ai;
+mod artifacts;
 mod backup;
 mod catalogue;
+mod cloud;
+mod custody;
+mod fat32;
+mod http;
 mod media;
 mod partitions;
+mod reconstruct;
 mod repair;
 mod snapshot;
 mod source;
@@ -18,12 +26,34 @@ use source::{
     Layout, ObservedReader, hash_image, hash_image_with, invalid, open_image, same_file_state,
 };
 
-pub use backup::{BackupReport, backup_files, backup_selected_files};
+#[cfg(target_os = "linux")]
+pub use acquisition::acquire_disk;
+pub use acquisition::{
+    AcquisitionReport, AndroidScope, DetectedDevice, Transport, acquire_device, acquire_image,
+    detect_devices, verify_acquisition,
+};
+pub use ai::{AiTriage, ai_triage};
+pub use artifacts::{ArtifactKind, ArtifactReport, inspect_artifact};
+pub use backup::{BackupReport, backup_files, backup_selected_files, restore_files};
 pub use catalogue::{
     Catalogue, CatalogueEntry, FileCategory, catalogue, catalogue_file, verify_file,
 };
+pub use cloud::{
+    CloudDownload, google_drive_download, google_drive_trash, google_photos_download,
+    google_photos_list, google_photos_session,
+};
+pub use custody::{
+    ActionPlan, ApprovedAction, SensitiveAction, make_action_plan, verify_action_approval,
+};
+pub use custody::{
+    CustodyAction, CustodyHead, append_custody, generate_custody_key, verify_custody,
+};
+pub use fat32::{
+    DeletedFatFile, FatExportReport, FatUndeleteReport, recover_fat32_deleted, scan_fat32_deleted,
+};
 pub use media::MediaType;
 pub use partitions::{Partition, PartitionMap};
+pub use reconstruct::{ReconstructionReport, reconstruct_file};
 pub use repair::{RepairChange, RepairPreview, RepairReport, RepairResult, preview_repair};
 pub use snapshot::{
     ExportComparison, ExportFile, ExportInventory, PathObservation, compare_exports, inventory,

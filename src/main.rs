@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use omnirecovery::{MediaType, ScanOptions, StorageProfile};
+use omnirecovery::{AndroidScope, MediaType, ScanOptions, StorageProfile, Transport};
 use zeroize::Zeroizing;
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Offline inspection of previously acquired storage images and Android exports"
+    about = "Local data recovery, authorized acquisition and forensic inspection"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -18,6 +18,131 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create an expiring, device-bound firmware or sanitization review plan.
+    PlanAction {
+        #[arg(value_enum)]
+        action: omnirecovery::SensitiveAction,
+        destination: PathBuf,
+        #[arg(long)]
+        case: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        target_id: String,
+        #[arg(long, requires = "vendor_sha256")]
+        firmware: Option<PathBuf>,
+        #[arg(long, requires = "firmware")]
+        vendor_sha256: Option<String>,
+    },
+    /// Verify two distinct signatures for an exact wipe or firmware plan.
+    VerifyApproval {
+        ledger: PathBuf,
+        plan: PathBuf,
+        #[arg(long)]
+        trust: PathBuf,
+        #[arg(long)]
+        expected_head: String,
+    },
+    /// Reassemble recorded raw image ranges and verify the original file digest.
+    Reconstruct {
+        image: PathBuf,
+        manifest: PathBuf,
+        destination: PathBuf,
+    },
+    /// Read from explicitly authorized Google cloud services.
+    Cloud {
+        #[command(subcommand)]
+        command: CloudCommand,
+    },
+    /// Ask a local model or explicitly authorized HTTPS provider about aggregate scan metrics.
+    AiTriage {
+        image: PathBuf,
+        #[arg(long)]
+        model: String,
+        #[arg(long, requires = "allow_remote")]
+        remote_url: Option<String>,
+        #[arg(long, requires = "remote_url")]
+        allow_remote: bool,
+    },
+    /// Read structured records from a supported local export.
+    Artifacts {
+        source: PathBuf,
+        #[arg(value_enum)]
+        kind: omnirecovery::ArtifactKind,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
+    /// Create an operator signing key and print its public key.
+    CustodyKeygen { private_key: PathBuf },
+    /// Sign and append a case event for an artifact.
+    CustodyAppend {
+        ledger: PathBuf,
+        artifact: PathBuf,
+        #[arg(long)]
+        trust: PathBuf,
+        #[arg(long)]
+        private_key: PathBuf,
+        #[arg(long)]
+        actor: String,
+        #[arg(long)]
+        case: String,
+        #[arg(long, value_enum)]
+        action: omnirecovery::CustodyAction,
+    },
+    /// Verify every custody signature against a separately retained head hash.
+    CustodyVerify {
+        ledger: PathBuf,
+        #[arg(long)]
+        trust: PathBuf,
+        #[arg(long)]
+        expected_head: String,
+    },
+    /// List deleted FAT32 short entries whose contiguous cluster spans are free.
+    UndeleteFat32 {
+        image: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        volume_offset: u64,
+    },
+    /// Export one candidate from the exact FAT32 image examined earlier.
+    RecoverFat32 {
+        image: PathBuf,
+        entry_offset: u64,
+        destination: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        volume_offset: u64,
+        #[arg(long)]
+        source_sha256: String,
+        #[arg(long)]
+        expected_sha256: Option<String>,
+    },
+    /// List devices exposed by a local USB transport helper.
+    Devices { transport: Transport },
+    /// Collect an authorized USB logical export into an existing destination directory.
+    Acquire {
+        transport: Transport,
+        id: String,
+        destination: PathBuf,
+        #[arg(long, value_enum, default_value = "shared")]
+        android_scope: AndroidScope,
+    },
+    /// Copy and verify an existing image into a new capture directory.
+    CloneImage {
+        image: PathBuf,
+        destination: PathBuf,
+    },
+    /// Read an exclusively opened, already read-only whole Linux block device.
+    #[cfg(target_os = "linux")]
+    CloneDisk {
+        device: PathBuf,
+        destination: PathBuf,
+    },
+    /// Recheck every data file against an acquisition manifest.
+    VerifyAcquisition { directory: PathBuf },
+    /// Restore a password-protected OmniRecovery file archive to a new directory.
+    RestoreFiles {
+        archive: PathBuf,
+        destination: PathBuf,
+    },
     /// Scan a regular raw or Android sparse image and emit a JSON findings report.
     Scan {
         image: PathBuf,
@@ -64,9 +189,42 @@ enum Command {
     Agent { source: PathBuf },
 }
 
+#[derive(Subcommand)]
+enum CloudCommand {
+    /// List accessible items in Google Drive Trash.
+    DriveTrash {
+        #[arg(long)]
+        page_token: Option<String>,
+    },
+    /// Download a Drive blob to a new local file.
+    DriveDownload { id: String, destination: PathBuf },
+    /// Create a Google Photos Picker session and print its selection URL.
+    PhotosSession,
+    /// List photos and videos selected in a Picker session.
+    PhotosList {
+        session: String,
+        #[arg(long)]
+        page_token: Option<String>,
+    },
+    /// Download one explicitly selected Photos item.
+    PhotosDownload {
+        session: String,
+        id: String,
+        destination: PathBuf,
+        #[arg(long)]
+        page_token: Option<String>,
+    },
+}
+
 #[derive(serde::Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum AgentRequest {
+    Scan {
+        #[serde(default)]
+        offset: u64,
+        length: u64,
+        media: Option<MediaType>,
+    },
     Search {
         query: String,
         category: Option<omnirecovery::FileCategory>,
@@ -79,6 +237,7 @@ enum AgentRequest {
 fn run_agent(source: &Path, mut output: impl Write) -> Result<(), Box<dyn std::error::Error>> {
     let mut input = io::stdin().lock();
     let mut line = Vec::new();
+    let mut scan_used = false;
     for _ in 0..1024 {
         line.clear();
         if (&mut input).take(4097).read_until(b'\n', &mut line)? == 0 {
@@ -98,7 +257,37 @@ fn run_agent(source: &Path, mut output: impl Write) -> Result<(), Box<dyn std::e
                 .and_then(|file| omnirecovery::verify_file(&file))
                 .ok()
                 .and_then(|report| serde_json::to_value(report).ok()),
-            Err(_) => None,
+            Ok(AgentRequest::Scan {
+                offset,
+                length,
+                media,
+            }) if !scan_used && (1..=32 * 1024 * 1024).contains(&length) => {
+                scan_used = true;
+                omnirecovery::scan_selected_media(
+                    source,
+                    ScanOptions {
+                        offset,
+                        length: Some(length),
+                        storage: StorageProfile::Auto,
+                    },
+                    media,
+                )
+                .ok()
+                .map(|mut report| {
+                    let findings_returned = report.findings.len().min(200);
+                    let findings_total = report.findings.len();
+                    report.findings.truncate(findings_returned);
+                    serde_json::json!({
+                        "source_sha256": report.source_sha256,
+                        "range": report.selected_range,
+                        "observed_ranges_fully_scanned": report.observed_ranges_fully_scanned,
+                        "findings_total": findings_total,
+                        "findings": report.findings,
+                        "triage": report.triage,
+                    })
+                })
+            }
+            _ => None,
         };
         let response = response.map_or_else(
             || serde_json::json!({"ok":false,"error":"request_rejected"}),
@@ -115,6 +304,199 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let mut output = io::stdout().lock();
     match command {
+        Command::PlanAction {
+            action,
+            destination,
+            case,
+            model,
+            target_id,
+            firmware,
+            vendor_sha256,
+        } => {
+            omnirecovery::make_action_plan(
+                action,
+                &case,
+                &model,
+                &target_id,
+                firmware.as_deref().zip(vendor_sha256.as_deref()),
+                &destination,
+            )?;
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({"plan": destination, "status": "awaiting_signed_request_and_approval"}),
+            )?;
+        }
+        Command::VerifyApproval {
+            ledger,
+            plan,
+            trust,
+            expected_head,
+        } => {
+            let report =
+                omnirecovery::verify_action_approval(&ledger, &trust, &expected_head, &plan)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::Reconstruct {
+            image,
+            manifest,
+            destination,
+        } => {
+            let report = omnirecovery::reconstruct_file(&image, &manifest, &destination)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::Cloud { command } => {
+            let token = Zeroizing::new(rpassword::prompt_password("Google OAuth access token: ")?);
+            match command {
+                CloudCommand::DriveTrash { page_token } => serde_json::to_writer_pretty(
+                    &mut output,
+                    &omnirecovery::google_drive_trash(&token, page_token.as_deref())?,
+                )?,
+                CloudCommand::DriveDownload { id, destination } => serde_json::to_writer_pretty(
+                    &mut output,
+                    &omnirecovery::google_drive_download(&token, &id, &destination)?,
+                )?,
+                CloudCommand::PhotosSession => serde_json::to_writer_pretty(
+                    &mut output,
+                    &omnirecovery::google_photos_session(&token)?,
+                )?,
+                CloudCommand::PhotosList {
+                    session,
+                    page_token,
+                } => serde_json::to_writer_pretty(
+                    &mut output,
+                    &omnirecovery::google_photos_list(&token, &session, page_token.as_deref())?,
+                )?,
+                CloudCommand::PhotosDownload {
+                    session,
+                    id,
+                    destination,
+                    page_token,
+                } => serde_json::to_writer_pretty(
+                    &mut output,
+                    &omnirecovery::google_photos_download(
+                        &token,
+                        &session,
+                        &id,
+                        page_token.as_deref(),
+                        &destination,
+                    )?,
+                )?,
+            }
+        }
+        Command::AiTriage {
+            image,
+            model,
+            remote_url,
+            allow_remote: _,
+        } => {
+            let scan = omnirecovery::scan(&image)?;
+            let report = omnirecovery::ai_triage(&scan, &model, remote_url.as_deref())?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::Artifacts {
+            source,
+            kind,
+            limit,
+        } => {
+            let report = omnirecovery::inspect_artifact(&source, kind, limit)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::CustodyKeygen { private_key } => {
+            let public_key = omnirecovery::generate_custody_key(&private_key)?;
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({ "public_key": public_key }),
+            )?;
+        }
+        Command::CustodyAppend {
+            ledger,
+            artifact,
+            trust,
+            private_key,
+            actor,
+            case,
+            action,
+        } => {
+            let head = omnirecovery::append_custody(
+                &ledger,
+                &trust,
+                &private_key,
+                &actor,
+                &case,
+                action,
+                &artifact,
+            )?;
+            serde_json::to_writer_pretty(&mut output, &head)?;
+        }
+        Command::CustodyVerify {
+            ledger,
+            trust,
+            expected_head,
+        } => {
+            let head = omnirecovery::verify_custody(&ledger, &trust, &expected_head)?;
+            serde_json::to_writer_pretty(&mut output, &head)?;
+        }
+        Command::UndeleteFat32 {
+            image,
+            volume_offset,
+        } => {
+            let report = omnirecovery::scan_fat32_deleted(&image, volume_offset)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::RecoverFat32 {
+            image,
+            entry_offset,
+            destination,
+            volume_offset,
+            source_sha256,
+            expected_sha256,
+        } => {
+            let report = omnirecovery::recover_fat32_deleted(
+                &image,
+                volume_offset,
+                entry_offset,
+                &source_sha256,
+                expected_sha256.as_deref(),
+                &destination,
+            )?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::Devices { transport } => {
+            serde_json::to_writer_pretty(&mut output, &omnirecovery::detect_devices(transport)?)?;
+        }
+        Command::Acquire {
+            transport,
+            id,
+            destination,
+            android_scope,
+        } => {
+            let report = omnirecovery::acquire_device(transport, &id, android_scope, &destination)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::CloneImage { image, destination } => {
+            let report = omnirecovery::acquire_image(&image, &destination)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        #[cfg(target_os = "linux")]
+        Command::CloneDisk {
+            device,
+            destination,
+        } => {
+            let report = omnirecovery::acquire_disk(&device, &destination)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::VerifyAcquisition { directory } => {
+            let report = omnirecovery::verify_acquisition(&directory)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::RestoreFiles {
+            archive,
+            destination,
+        } => {
+            let password = Zeroizing::new(rpassword::prompt_password("Backup passphrase: ")?);
+            let report = omnirecovery::restore_files(&archive, &destination, &password)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
         Command::Scan {
             image,
             storage,

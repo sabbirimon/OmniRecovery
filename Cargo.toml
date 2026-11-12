@@ -1,6 +1,6 @@
 [package]
 name = "omnirecovery"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 rust-version = "1.99.1"
 publish = false
@@ -9,12 +9,15 @@ publish = false
 aes-gcm = "0.10"
 clap = { version = "4.5", features = ["derive"] }
 crc32fast = "1.5"
+ed25519-dalek = "=2.2.0"
 flate2 = "1.1"
 getrandom = "0.4"
+hex = "=0.4.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 memchr = "2"
 pbkdf2 = "0.12"
 rpassword = "7"
+rusqlite = { version = "=0.40.2", features = ["bundled", "limits"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

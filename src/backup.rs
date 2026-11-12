@@ -208,9 +208,7 @@ impl<W: Write> ArchiveWriter<W> {
         header[..8].copy_from_slice(MAGIC);
         getrandom::fill(&mut header[8..])
             .map_err(|_| io::Error::other("could not generate archive salt"))?;
-        let mut key = Zeroizing::new([0_u8; 32]);
-        pbkdf2_hmac::<Sha256>(password.as_bytes(), &header[8..], KDF_ROUNDS, &mut *key);
-        let cipher = Aes256Gcm::new_from_slice(&*key).expect("AES-256 key length");
+        let cipher = archive_cipher(password, &header);
         output.write_all(&header)?;
         Ok(Self {
             output,
@@ -222,17 +220,11 @@ impl<W: Write> ArchiveWriter<W> {
 
     fn record(&mut self, kind: u8, data: &[u8]) -> io::Result<()> {
         let length = ((1 + data.len()) as u32).to_be_bytes();
-        let sequence = self.sequence.to_be_bytes();
+        let (nonce, aad) = record_context(&self.header, self.sequence, length);
         self.sequence = self
             .sequence
             .checked_add(1)
             .ok_or_else(|| invalid("archive record limit exceeded"))?;
-        let mut nonce = [0; 12];
-        nonce[4..].copy_from_slice(&sequence);
-        let mut aad = [0; 36];
-        aad[..24].copy_from_slice(&self.header);
-        aad[24..32].copy_from_slice(&sequence);
-        aad[32..].copy_from_slice(&length);
         let mut record = Zeroizing::new(Vec::with_capacity(1 + data.len()));
         record.push(kind);
         record.extend_from_slice(data);
@@ -243,5 +235,189 @@ impl<W: Write> ArchiveWriter<W> {
         self.output.write_all(&length)?;
         self.output.write_all(&record)?;
         self.output.write_all(&tag)
+    }
+}
+
+/// Restore an authenticated OmniRecovery archive without overwriting existing files.
+pub fn restore_files(
+    archive: &Path,
+    destination: &Path,
+    password: &str,
+) -> io::Result<crate::AcquisitionReport> {
+    use std::fs::File;
+
+    use crate::acquisition::{finish, now_ms, stage};
+
+    if !(12..=128).contains(&password.len())
+        || !password.bytes().all(|b| (0x20..=0x7e).contains(&b))
+    {
+        return Err(invalid("invalid archive passphrase format"));
+    }
+    let start = now_ms();
+    let mut input = open_image(archive)?;
+    let state = input.metadata()?;
+    let mut header = [0_u8; 24];
+    input.read_exact(&mut header)?;
+    if &header[..8] != MAGIC {
+        return Err(invalid("unrecognized OmniRecovery archive"));
+    }
+    let cipher = archive_cipher(password, &header);
+    let (staging, data) = stage(destination)?;
+    let mut current: Option<(String, File, u64, Sha256)> = None;
+    let mut expected = BTreeMap::new();
+    let mut names = BTreeMap::new();
+    let mut bytes = 0_u64;
+    for sequence in 0_u64.. {
+        let mut encoded_len = [0_u8; 4];
+        input.read_exact(&mut encoded_len)?;
+        let count = u32::from_be_bytes(encoded_len) as usize;
+        if !(1..=BLOCK + 1).contains(&count) {
+            return Err(invalid("invalid archive record length"));
+        }
+        let mut record = Zeroizing::new(vec![0_u8; count]);
+        let mut tag = [0; 16];
+        input.read_exact(&mut record)?;
+        input.read_exact(&mut tag)?;
+        let (nonce, aad) = record_context(&header, sequence, encoded_len);
+        cipher
+            .decrypt_in_place_detached(
+                Nonce::from_slice(&nonce),
+                &aad,
+                &mut record,
+                aes_gcm::Tag::from_slice(&tag),
+            )
+            .map_err(|_| invalid("archive authentication failed"))?;
+        let payload = &record[1..];
+        match record[0] {
+            1 if current.is_none() && expected.len() < MAX_FILES => {
+                let path = std::str::from_utf8(payload)
+                    .ok()
+                    .filter(|path| portable_path(path))
+                    .ok_or_else(|| invalid("archive contains an unsafe path"))?;
+                for prefix in path
+                    .match_indices('/')
+                    .map(|(i, _)| &path[..i])
+                    .chain([path])
+                {
+                    if names
+                        .insert(prefix.to_ascii_lowercase(), prefix.to_owned())
+                        .is_some_and(|name| name != prefix)
+                    {
+                        return Err(invalid("archive contains case-colliding paths"));
+                    }
+                }
+                let output = data.join(path);
+                fs::create_dir_all(
+                    output
+                        .parent()
+                        .ok_or_else(|| invalid("invalid restore path"))?,
+                )?;
+                current = Some((path.to_owned(), File::create_new(output)?, 0, Sha256::new()));
+            }
+            2 if !payload.is_empty() => {
+                let (_, output, size, digest) = current
+                    .as_mut()
+                    .ok_or_else(|| invalid("orphan archive data record"))?;
+                let incoming = payload.len() as u64;
+                bytes = bytes
+                    .checked_add(incoming)
+                    .filter(|total| *total <= MAX_BYTES)
+                    .ok_or_else(|| invalid("archive exceeds the 64 GiB restore limit"))?;
+                *size += incoming;
+                output.write_all(payload)?;
+                digest.update(payload);
+            }
+            3 if payload.len() == 40 => {
+                let (path, output, size, digest) = current
+                    .take()
+                    .ok_or_else(|| invalid("orphan archive file terminator"))?;
+                let hash = digest.finalize();
+                if payload[..8] != size.to_be_bytes() || payload[8..] != hash[..] {
+                    return Err(invalid("archived file digest or size mismatch"));
+                }
+                output.sync_all()?;
+                expected.insert(
+                    path,
+                    crate::ExportFile {
+                        length: size,
+                        sha256: format!("{hash:x}"),
+                    },
+                );
+            }
+            4 if current.is_none() && payload.len() == 12 && !expected.is_empty() => {
+                if payload[..4] != (expected.len() as u32).to_be_bytes()
+                    || payload[4..] != bytes.to_be_bytes()
+                    || input.read(&mut [0; 1])? != 0
+                    || !same_file_state(&state, &input.metadata()?)
+                {
+                    return Err(invalid("archive footer or input stability check failed"));
+                }
+                let files = inventory(&data)?;
+                if files.files != expected {
+                    return Err(invalid("restore readback verification failed"));
+                }
+                return finish(
+                    staging,
+                    files,
+                    "omnibackup_restore",
+                    archive.display().to_string(),
+                    "authenticated archive files",
+                    start,
+                    "authenticated_records_and_local_readback_sha256",
+                );
+            }
+            _ => return Err(invalid("unexpected archive record")),
+        }
+    }
+    Err(invalid("archive sequence exhausted"))
+}
+
+fn archive_cipher(password: &str, header: &[u8; 24]) -> Aes256Gcm {
+    let mut key = Zeroizing::new([0_u8; 32]);
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), &header[8..], KDF_ROUNDS, &mut *key);
+    Aes256Gcm::new_from_slice(&*key).expect("AES-256 key length")
+}
+
+fn record_context(header: &[u8; 24], sequence: u64, length: [u8; 4]) -> ([u8; 12], [u8; 36]) {
+    let sequence = sequence.to_be_bytes();
+    let mut nonce = [0; 12];
+    nonce[4..].copy_from_slice(&sequence);
+    let mut aad = [0; 36];
+    aad[..24].copy_from_slice(header);
+    aad[24..32].copy_from_slice(&sequence);
+    aad[32..].copy_from_slice(&length);
+    (nonce, aad)
+}
+
+#[cfg(test)]
+mod restore_tests {
+    use super::*;
+
+    #[test]
+    fn restores_authenticated_bytes_and_discards_incomplete_results() -> io::Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let source = tmp.path().join("source");
+        let restored = tmp.path().join("restored");
+        fs::create_dir_all(source.join("nested"))?;
+        fs::create_dir(&restored)?;
+        fs::write(source.join("nested/video.mp4"), vec![7; BLOCK + 5])?;
+        fs::write(source.join("empty"), [])?;
+        let archive = tmp.path().join("example.omnibackup");
+        let password = "Long passphrase for a synthetic test";
+        backup_files(&source, &archive, password)?;
+        assert!(restore_files(&archive, &restored, "another valid passphrase").is_err());
+        assert_eq!(fs::read_dir(&restored)?.count(), 0);
+        let result = restore_files(&archive, &restored, password)?;
+        assert_eq!(result.files.files.len(), 2);
+        assert_eq!(
+            fs::read(result.output.join("data/nested/video.mp4"))?,
+            vec![7; BLOCK + 5]
+        );
+        let file = fs::OpenOptions::new().write(true).open(&archive)?;
+        file.set_len(file.metadata()?.len() - 3)?;
+        drop(file);
+        assert!(restore_files(&archive, &restored, password).is_err());
+        assert_eq!(fs::read_dir(&restored)?.count(), 1);
+        Ok(())
     }
 }

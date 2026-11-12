@@ -499,3 +499,37 @@ pub(super) async fn sanitize_plan(
         report(&state, ReportKind::Sanitize, json!({"schema_version":1,"status":"planning_only","device_id":disk.id,"model":disk.name,"size":disk.size,"goal":goal,"method_guidance":route,"standard":"NIST SP 800-88 Rev. 2","verification":"SHA-256 may document readable output for a qualified overwrite. Controller verification applies to purge methods.","approval":"Confirm target identity and evidence-free status. Obtain two authorized approvals before execution."}))
     }).await
 }
+
+#[tauri::command]
+pub(super) async fn list_acquisition_devices(
+    transport: omnirecovery::Transport,
+) -> Result<Vec<omnirecovery::DetectedDevice>, String> {
+    work(move || omnirecovery::detect_devices(transport).map_err(error)).await
+}
+
+#[tauri::command]
+pub(super) async fn capture_usb_device(
+    app: AppHandle,
+    transport: omnirecovery::Transport,
+    id: String,
+    scope: omnirecovery::AndroidScope,
+) -> Result<Option<Value>, String> {
+    work(move || {
+        let folder = app
+            .dialog()
+            .file()
+            .set_title("Choose a private destination for the USB capture")
+            .blocking_pick_folder();
+        let Some(destination) = picked(folder)? else {
+            return Ok(None);
+        };
+        let result =
+            omnirecovery::acquire_device(transport, &id, scope, &destination).map_err(error)?;
+        Ok(Some(json!({
+            "output": result.output,
+            "files": result.files.files.len(),
+            "bytes": result.bytes,
+        })))
+    })
+    .await
+}

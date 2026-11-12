@@ -41,3 +41,20 @@ Reviewed November 12, 2026. The installed Mac build is Dr.Fone 13.8.7 (1241). Th
 - Live `vmmap` and stack samples measured about 145 MB of physical footprint at the observed point and about 284 MB peak. The live mappings included Xamarin.Mac, Android connection, device management, transfer, SQLite, and the shared module bridge. Stack samples showed Mono execution and runtime workers. These observations concern the Mac process during connection and navigation. They establish no recovery result or scan-memory benchmark.
 
 The paid rows are reference workflows for independent OmniRecovery development. No vendor code, credentials, or artwork were imported into the project.
+
+## Follow-up screenshots and OmniRecovery coverage
+
+The five screenshots show the Mac Toolbox, its hover details, and the iOS System Repair screen. The descriptions below reflect the visible menus and vendor claims in those images. They establish which workflows are offered by Dr.Fone.
+
+| Screenshot workflow | OmniRecovery 0.3.3 coverage |
+| --- | --- |
+| iOS repair for boot loops, Apple-logo stalls and black screens, plus Android system and iTunes error repair | File repair and recovery are available. OS repair requires a device-specific implementation and hardware tests |
+| iOS upgrade or downgrade, error 1110 or full-disk repair, and Recovery or DFU toolbox | The CLI verifies a supplied firmware image against a trusted vendor digest and records a device-bound plan. Firmware execution, version changes, and 1110 and DFU repair remain open |
+| Enter or exit Recovery Mode and Reset Device | Dedicated Recovery Mode and factory reset controls remain open |
+| Data Eraser and Anti-Recovery Repair | The GUI has a sanitization planner. The CLI checks signed approval of an exact target-bound plan. Physical-device erase execution and certification remain open |
+| Connected-device tree, Xiaomi model, My Backup and Backup History | The desktop has device inventory, a USB capture selector and before/after snapshots. Captures get a saved manifest. A browsable backup library and deeper model identification remain open |
+| One-click Android to iOS or iOS to Android transfer of photos, video, contacts, messages, bookmarks, voice memos, alarms, voicemail and ringtones | Selected files can be packaged and restored on desktop or with the Android companion. Native cross-platform restore of messages, bookmarks, settings and other app records remains open |
+| WhatsApp transfer, backup and restore, plus LINE, Kik, Viber and WeChat | WhatsApp text export inspection and shared-file capture are available. Native chat-database migration, backup decryption, and additional messenger adapters remain open |
+| Screen Mirror, Phone Companion, Virtual Location | The Android companion restores selected file archives. Screen mirroring, GPS simulation, and wireless phone management remain open |
+| Password Manager for Wi-Fi, app, website and mail passwords, plus locked PDF handling | These credential and document workflows are outside the implemented recovery scope |
+| Screen Unlock, Apple ID or Activation Lock, MDM removal and Samsung FRP | OmniRecovery uses authorized platform access and existing device trust for acquisition. Account and device protection bypass workflows are outside the implemented scope |

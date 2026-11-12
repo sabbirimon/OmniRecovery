@@ -29,6 +29,34 @@ jobs:
       - run: cargo test --release --locked
       - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
       - run: cargo build --release --locked
+      - name: Exercise whole-block capture with a disposable loop device
+        run: |
+          set -euo pipefail
+          image=$(mktemp)
+          output=$(mktemp -d)
+          loop=''
+          cleanup() {
+            if [[ -n "$loop" ]]; then sudo losetup -d "$loop"; fi
+            rm -f "$image"
+            sudo rm -rf "$output"
+          }
+          trap cleanup EXIT
+          dd if=/dev/urandom of="$image" bs=512 count=64 status=none
+          if ! loop=$(sudo losetup --find --show "$image"); then
+            echo "::notice::The hosted runner has no available loop device"
+            exit 0
+          fi
+          if sudo target/release/omnirecovery clone-disk "$loop" "$output"; then
+            echo "::error::A writable block device was accepted"
+            exit 1
+          fi
+          test -z "$(find "$output" -mindepth 1 -print -quit)"
+          sudo losetup -d "$loop"
+          loop=$(sudo losetup --find --show --read-only "$image")
+          sudo target/release/omnirecovery clone-disk "$loop" "$output" > "$output/result.json"
+          capture=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$output/result.json")
+          sudo cmp "$image" "$capture/data/capture.dd"
+          sudo target/release/omnirecovery verify-acquisition "$capture"
       - name: Build the GUI package and standalone CLI archive
         run: |
           set -eu

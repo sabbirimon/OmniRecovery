@@ -7,6 +7,13 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 const SPARSE_MAGIC: [u8; 4] = [0x3a, 0xff, 0x26, 0xed];
+pub(crate) fn is_sparse_image(file: &mut File) -> io::Result<bool> {
+    file.rewind()?;
+    let mut magic = Vec::new();
+    file.take(4).read_to_end(&mut magic)?;
+    Ok(magic == SPARSE_MAGIC)
+}
+
 const MAX_SPARSE_CHUNKS: u32 = 1_000_000;
 
 pub(crate) fn invalid(message: &'static str) -> io::Error {

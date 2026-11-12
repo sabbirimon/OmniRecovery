@@ -1,6 +1,20 @@
 # OmniRecovery requests and progress
 
-Status as of November 12, 2026. The public MIT release is [v0.3.0](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0), with an Intel/Apple Silicon DMG, Windows x64 desktop and CLI executables, and an Android debug companion APK. The local 0.3.2 update adds a faster scan and recovery engine, offline recovery triage, MOV support and additional header repairs. The source tree includes the desktop GUI for Linux and Ubuntu CI coverage. Linux installers and current Windows and Linux builds have not been published. [User manual](user-manual.md) · [Visual guide](visual-guide.md) · [Capability matrix](capabilities.md)
+The published MIT [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
+
+## 0.3.3 implementation and remaining work
+
+| Area | Implemented in 0.3.3 | Remaining |
+| --- | --- | --- |
+| USB acquisition | Android shared storage, iOS MobileBackup2 backups and PTP camera collection via platform helpers. Desktop selector and CLI. Verified destination manifests and Linux whole-block capture | Physical phone and camera validation, OEM driver packaging, per-model database and proprietary IoT protocols, privileged phone partition acquisition and macOS/Windows live block cloning |
+| Deeper recovery | FAT32 deleted entries with contiguous hypotheses, trusted-hash reconstruction of supplied fragments, structured SMS/call/contact export reading and WhatsApp text import | Automatic fragment discovery, other filesystem undelete, deleted database pages, private encrypted messenger and mail formats, broader carving and repair |
+| Backup, cloud and firmware | Authenticated OmniRecovery restore on desktop, Drive Trash listing and blob copy, Photos Picker and download, firmware and wipe approval plans | Full-device or app-state restore, flashing and wipe execution, OS repair, cloud device backups, and live OAuth qualification |
+| AI and custody | Local Ollama, explicit HTTPS provider, bounded JSON-line scan API, individual Ed25519 case events and independently anchored chain verification | Hardware-backed credentials, production remote job service and mTLS, case vault, classified workflow enforcement and accreditation |
+| Packaging | macOS, Windows x64, Linux x64 DEB and standalone CLI build recipes | Physical Windows GUI, ARM Linux and RPM packages, server deployment and USB passthrough qualification |
+
+[Device acquisition and recovery](acquisition-and-recovery.md) · [Dr.Fone screenshot comparison](drfone-feature-inventory.md#follow-up-screenshots-and-omnirecovery-coverage)
+
+The tables below retain the earlier request inventory and design context. The 0.3.3 table records the latest implementation.
 
 ## Product and recovery
 

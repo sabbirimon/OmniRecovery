@@ -576,6 +576,8 @@ fn main() {
             inspect_bytes,
             media_saving_available,
             workflows::discover_devices,
+            workflows::list_acquisition_devices,
+            workflows::capture_usb_device,
             workflows::choose_volume,
             workflows::check_adb,
             workflows::scan_catalogue,

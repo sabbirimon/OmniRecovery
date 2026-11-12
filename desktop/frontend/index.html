@@ -26,7 +26,7 @@
         <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span>Sanitize</button>
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span>Automation</button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.2</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.3</span></div>
     </aside>
 
     <main>
@@ -104,6 +104,20 @@
 
       <section id="capture" class="view" aria-labelledby="capture-title" hidden>
         <header><h1 id="capture-title">Capture &amp; clone</h1><p>Choose a source to enable the Before and After capture buttons.</p></header>
+        <section class="card output-card">
+          <h2>Acquire from a connected device</h2>
+          <p class="muted">Capture Android shared files, an iOS device backup, or files from a PTP camera into a new folder with a SHA-256 manifest.</p>
+          <div class="field-row">
+            <label>USB transport<select id="acquisition-transport"><option value="android">Android (ADB)</option><option value="ios">iPhone or iPad</option><option value="camera">Camera (PTP)</option></select></label>
+            <label id="acquisition-scope-label">Android files<select id="acquisition-scope"><option value="shared">Shared storage</option><option value="camera">Camera folder</option><option value="downloads">Downloads</option><option value="documents">Documents</option><option value="pictures">Pictures</option><option value="music">Music</option><option value="movies">Movies</option></select></label>
+            <label>Connected device<select id="acquisition-device"><option value="">Refresh to detect devices</option></select></label>
+          </div>
+          <div class="actions">
+            <button data-action id="refresh-acquisition">Detect devices</button>
+            <button class="primary" data-action id="start-acquisition">Choose destination and capture</button>
+          </div>
+          <p class="muted" id="acquisition-status">Install the platform's ADB, libimobiledevice, or gPhoto2 helper. Unlock the phone and approve its USB prompt when requested.</p>
+        </section>
         <section class="card"><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button class="primary" data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a folder or phone export to begin.</p>
           <div class="source-pair"><div><h2>Before capture</h2><p class="muted" id="before-capture-state">No capture saved.</p><button class="primary" data-action id="capture-before">Capture before</button></div><div><h2>After capture</h2><p class="muted" id="after-capture-state">No capture saved.</p><button data-action id="capture-after">Capture after</button></div></div>
           <div class="actions device-actions"><button data-action id="compare-saved-captures">Compare saved captures</button><button data-action id="clone-image" hidden>Clone image file</button></div>

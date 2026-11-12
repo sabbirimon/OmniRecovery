@@ -29,6 +29,7 @@ window.syncWorkspaceControls = () => {
   el('capture-before').disabled ||= !selections.has(captureSource());
   el('capture-after').disabled ||= !selections.has(captureSource());
   el('clone-image').disabled ||= !selections.has('capture_image');
+  el('start-acquisition').disabled ||= !el('acquisition-device').value;
   el('compare-saved-captures').disabled ||= !snapshots?.before || !snapshots?.after;
   el('review-transfer-files').disabled ||= !selections.has('transfer');
   el('start-transfer').disabled ||= cloneList !== null && cloneSelection.size === 0;
@@ -40,7 +41,7 @@ window.syncWorkspaceControls = () => {
   el('make-sanitize-plan').disabled ||= !el('sanitize-disk').value;
   el('export-log').disabled ||= !activeLog;
   el('move-log').disabled ||= !activeLog;
-  for (const id of ['scan-source', 'capture-source-kind', 'log-view', 'sanitize-disk']) el(id).disabled = busy;
+  for (const id of ['scan-source', 'capture-source-kind', 'log-view', 'sanitize-disk', 'acquisition-transport', 'acquisition-device', 'acquisition-scope']) el(id).disabled = busy;
 };
 
 function resetCatalogue() {
@@ -212,6 +213,39 @@ el('check-adb').addEventListener('click', () => run('Checking the local Android 
     return row;
   }));
   return devices.length ? 'ADB status updated. Approve the USB debugging prompt on the phone if shown.' : 'No USB Android device was reported by ADB.';
+}));
+
+el('acquisition-transport').addEventListener('change', () => {
+  el('acquisition-device').replaceChildren(new Option('Refresh to detect devices', ''));
+  el('acquisition-scope-label').hidden = el('acquisition-transport').value !== 'android';
+  el('acquisition-status').textContent = 'Detect connected devices for this transport.';
+  window.syncWorkspaceControls();
+});
+el('acquisition-device').addEventListener('change', () => {
+  el('start-acquisition').disabled = busy || !el('acquisition-device').value;
+});
+el('refresh-acquisition').addEventListener('click', () => run('Detecting USB devices…', async () => {
+  const list = el('acquisition-device');
+  list.replaceChildren(new Option('Choose a connected device', ''));
+  const devices = await invoke('list_acquisition_devices', {transport: el('acquisition-transport').value});
+  const options = devices.map(device => {
+    const option = new Option([device.model, device.id, words(device.state)].filter(Boolean).join(' · '), device.id);
+    option.disabled = !['device', 'attached'].includes(device.state);
+    return option;
+  });
+  list.append(...options);
+  el('acquisition-status').textContent = devices.length ? 'Choose an attached, authorized device.' : 'No connected device was reported by the selected USB transport.';
+  return el('acquisition-status').textContent;
+}));
+el('start-acquisition').addEventListener('click', () => run('Capturing and verifying device files…', async () => {
+  const result = await invoke('capture_usb_device', {
+    transport: el('acquisition-transport').value,
+    id: el('acquisition-device').value,
+    scope: el('acquisition-scope').value
+  });
+  if (!result) return '';
+  el('acquisition-status').textContent = `Saved ${number.format(result.files)} verified files · ${size(result.bytes)} · ${result.output}`;
+  return 'USB capture saved with its SHA-256 manifest.';
 }));
 
 function renderCapture() {
