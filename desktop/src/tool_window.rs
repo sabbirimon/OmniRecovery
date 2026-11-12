@@ -25,6 +25,7 @@ fn tool(view: &str, source: Option<&str>) -> Result<ToolStart, &'static str> {
         "repair" => ("repair", "Repair files"),
         "transfer" => ("transfer", "Phone clone"),
         "service" => ("service", "Device service"),
+        "mirror" => ("mirror", "Screen mirror"),
         "forensics" => ("forensics", "Forensics"),
         "security" => ("security", "Security scan"),
         "logs" => ("logs", "Scan logs"),
@@ -36,6 +37,8 @@ fn tool(view: &str, source: Option<&str>) -> Result<ToolStart, &'static str> {
         (_, None) => None,
         ("scan", Some("android_export")) => Some("android_export"),
         ("scan", Some("ios_export")) => Some("ios_export"),
+        ("mirror", Some("android")) => Some("android"),
+        ("mirror", Some("android_wireless")) => Some("android_wireless"),
         _ => return Err("The selected tool does not support that initial source."),
     };
     Ok(ToolStart {

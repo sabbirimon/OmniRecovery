@@ -2,6 +2,13 @@
 
 The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
 
+## 0.3.6 storage, Android companion and forensic adapters
+
+- Storage filters, capacity charts and device specifications are available in the desktop workspace. Android screen, camera and audio preview uses a dedicated scrcpy window over an authorized USB or paired Wi-Fi connection.
+- The Android companion can create encrypted backups of selected files, verify archives without restoring, and restore compatible file archives.
+- ALEAPP and iLEAPP can parse staged exports through separately installed, digest-checked entrypoints. The Sleuth Kit adapter lists deleted entries from a verified raw image copy.
+- [Illustrated guide](visual-guide.md#browse-drives-and-phone-storage) · [Integration plan and remaining adapters](forensic-integrations.md)
+
 ## 0.3.5 recovery and desktop workspace
 
 - Toolbox cards open independent tool windows for scan, repair, phone capture, record review and other operations. Current selections and running jobs belong to each window. Saved records remain available across windows.

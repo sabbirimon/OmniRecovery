@@ -153,7 +153,7 @@ fn device_service_checks_recovery_identity_and_wireless_tls_inventory() -> io::R
     helper(
         bin,
         "scrcpy",
-        "test \"$*\" = '--serial PHONE --no-control --no-audio --window-title OmniRecovery Screen Mirror'",
+        "test \"$*\" = '--serial PHONE --window-title OmniRecovery Screen Mirror --no-control --max-size=1280 --video-bit-rate=6M --max-fps=45 --no-audio'",
     )?;
 
     let run = |args: &[&str]| cli(bin).args(args).output();
@@ -200,5 +200,84 @@ fn device_service_checks_recovery_identity_and_wireless_tls_inventory() -> io::R
             .status
             .success()
     );
+    Ok(())
+}
+
+#[test]
+fn external_parsers_receive_staged_sources_and_produce_verified_reports() -> io::Result<()> {
+    use sha2::{Digest, Sha256};
+    let root = tempfile::tempdir()?;
+    let output = root.path().join("output");
+    let export = root.path().join("export");
+    let checkout = root.path().join("checkout");
+    for directory in [&output, &export, &checkout] {
+        fs::create_dir(directory)?;
+    }
+    fs::write(export.join("fixture.txt"), b"example export")?;
+    let script = b"mock installed parser";
+    fs::write(checkout.join("aleapp.py"), script)?;
+    fs::write(checkout.join("ileapp.py"), script)?;
+    helper(
+        root.path(),
+        "python",
+        r#"
+        test "$1" = -s
+        test "$3" = -t
+        test "$5" = -i
+        test "$7" = -o
+        test "$(/bin/cat "$6/fixture.txt")" = 'example export'
+        printf 'kind\tvalue\nfixture\tvalidated\n' > "$8/report.tsv"
+    "#,
+    )?;
+    let sha256 = format!("{:x}", Sha256::digest(script));
+    for (engine, format) in [("aleapp", "fs"), ("ileapp", "itunes")] {
+        let result = cli(root.path())
+            .args(["analyze-leapp", engine])
+            .arg(&export)
+            .arg(&output)
+            .args(["--format", format, "--checkout"])
+            .arg(&checkout)
+            .arg("--python")
+            .arg(root.path().join("python"))
+            .args(["--script-sha256", &sha256])
+            .output()?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let report: Value = serde_json::from_slice(&result.stdout)?;
+        assert_eq!(
+            report["verification"],
+            "verified_staging_and_hashed_reports"
+        );
+        assert!(report["files"]["files"]["report.tsv"].is_object());
+    }
+    helper(
+        root.path(),
+        "fls",
+        r#"
+        if [ "$1" = "-V" ]; then printf 'Sleuth Kit fixture\n'; exit; fi
+        test "$1 $2 $3 $4 $5 $6 $7 $8 $9" = "-d -r -p -i raw -b 512 -o 0"
+        shift 9
+        test -f "$1"
+        printf 'r/r * 42: deleted.txt\n'
+    "#,
+    )?;
+    let image = root.path().join("fixture.dd");
+    fs::write(&image, [0_u8; 512])?;
+    let result = cli(root.path())
+        .arg("tsk-deleted")
+        .arg(&image)
+        .arg(&output)
+        .output()?;
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: Value = serde_json::from_slice(&result.stdout)?;
+    assert_eq!(report["acquisition"], "sleuth_kit_deleted_listing");
+    assert!(report["files"]["files"]["tsk-deleted.txt"].is_object());
     Ok(())
 }

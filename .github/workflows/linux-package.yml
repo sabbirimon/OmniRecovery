@@ -24,7 +24,7 @@ jobs:
       - name: Install build and smoke-test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth xdotool
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth xdotool sleuthkit dosfstools mtools
       - run: rustup toolchain install 1.99.1 --profile minimal
       - run: cargo test --release --locked
       - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
@@ -57,6 +57,20 @@ jobs:
           capture=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$output/result.json")
           sudo cmp "$image" "$capture/data/capture.dd"
           sudo target/release/omnirecovery verify-acquisition "$capture"
+      - name: Verify the Sleuth Kit adapter on a deleted FAT directory entry
+        run: |
+          set -euo pipefail
+          fixture=$(mktemp -d)
+          truncate -s 16M "$fixture/fat.dd"
+          mkfs.fat -F 16 "$fixture/fat.dd"
+          printf 'synthetic file' > "$fixture/DELETED.TXT"
+          mcopy -i "$fixture/fat.dd" "$fixture/DELETED.TXT" ::DELETED.TXT
+          mdel -i "$fixture/fat.dd" ::DELETED.TXT
+          mkdir "$fixture/reports"
+          target/release/omnirecovery tsk-deleted "$fixture/fat.dd" "$fixture/reports" > "$fixture/result.json"
+          report=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$fixture/result.json")
+          grep -i 'eleted\.txt' "$report/data/tsk-deleted.txt"
+          target/release/omnirecovery verify-acquisition "$report"
       - name: Build the GUI package and standalone CLI archive
         run: |
           set -eu

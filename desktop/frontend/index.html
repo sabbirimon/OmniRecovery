@@ -10,27 +10,34 @@
 </head>
 <body>
   <div class="workspace">
-    <aside class="sidebar">
+    <aside class="sidebar" id="workspace-sidebar">
       <div class="brand"><img src="icon.png" width="42" height="42" alt=""><span>OmniRecovery</span></div>
-      <nav aria-label="Workflows">
-        <button class="nav-button active" data-view="toolbox" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span>Toolbox</button>
-        <button class="nav-button" data-view="my-devices"><span class="nav-icon" aria-hidden="true">▯</span>My devices</button>
+      <button data-action id="sidebar-toggle" class="sidebar-toggle" aria-controls="workspace-nav" aria-pressed="false" title="Collapse navigation">‹</button>
+      <nav id="workspace-nav" aria-label="Workflows">
+        <span class="nav-section-label">Workspace</span>
+        <button class="nav-button active" data-view="toolbox" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Toolbox</span></button>
+        <button class="nav-button" data-view="my-devices"><span class="nav-icon" aria-hidden="true">▯</span><span class="nav-label">My devices</span></button>
         <div id="phone-sidebar" class="phone-sidebar"></div>
-        <button class="nav-button" data-view="devices"><span class="nav-icon" aria-hidden="true">▤</span>Devices &amp; storage</button>
-        <button class="nav-button" data-view="scan"><span class="nav-icon" aria-hidden="true">⌕</span>Scan media</button>
-        <button class="nav-button" data-view="capture"><span class="nav-icon" aria-hidden="true">⊞</span>Capture &amp; clone</button>
-        <button class="nav-button" data-view="compare"><span class="nav-icon" aria-hidden="true">⇄</span>Compare captures</button>
-        <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span>Repair files</button>
-        <button class="nav-button" data-view="transfer"><span class="nav-icon" aria-hidden="true">↗</span>Phone clone</button>
-        <button class="nav-button" data-view="service"><span class="nav-icon" aria-hidden="true">⚙</span>Device service</button>
-        <button class="nav-button" data-view="records-review"><span class="nav-icon" aria-hidden="true">▤</span>Chats &amp; records</button>
-        <button class="nav-button" data-view="forensics"><span class="nav-icon" aria-hidden="true">◎</span>Forensics</button>
-        <button class="nav-button" data-view="security"><span class="nav-icon" aria-hidden="true">◇</span>Security scan</button>
-        <button class="nav-button" data-view="logs"><span class="nav-icon" aria-hidden="true">≡</span>Scan logs</button>
-        <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span>Sanitize</button>
-        <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span>Automation</button>
+        <button class="nav-button" data-view="devices"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Devices &amp; storage</span></button>
+        <span class="nav-section-label">Recovery</span>
+        <button class="nav-button" data-view="scan"><span class="nav-icon" aria-hidden="true">⌕</span><span class="nav-label">Scan media</span></button>
+        <button class="nav-button" data-view="capture"><span class="nav-icon" aria-hidden="true">⊞</span><span class="nav-label">Capture &amp; clone</span></button>
+        <button class="nav-button" data-view="compare"><span class="nav-icon" aria-hidden="true">⇄</span><span class="nav-label">Compare captures</span></button>
+        <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span><span class="nav-label">Repair files</span></button>
+        <button class="nav-button" data-view="transfer"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Phone clone</span></button>
+        <span class="nav-section-label">Device tools</span>
+        <button class="nav-button" data-view="service"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Device service</span></button>
+        <button class="nav-button" id="open-mirror-nav"><span class="nav-icon" aria-hidden="true">▱</span><span class="nav-label">Screen mirror</span></button>
+        <button class="nav-button" data-view="records-review"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Chats &amp; records</span></button>
+        <span class="nav-section-label">Advanced tools</span>
+        <button class="nav-button" data-view="forensics"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Forensics</span></button>
+        <button class="nav-button" data-view="security"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Security scan</span></button>
+        <button class="nav-button" data-view="logs"><span class="nav-icon" aria-hidden="true">≡</span><span class="nav-label">Scan logs</span></button>
+        <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span><span class="nav-label">Sanitize</span></button>
+        <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span><span class="nav-label">Automation</span></button>
+        <button class="nav-button" data-view="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.5</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.6</span></div>
     </aside>
 
     <main>
@@ -47,7 +54,8 @@
           <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
           <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Package selected files for a receiving Android phone.</span></button>
           <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Run evidence scans, verification, and phone-export review.</span></button>
-          <button class="tool-tile" data-jump="service"><span class="tile-icon">⚙</span><strong>Device service</strong><span>Check recovery modes and mirror an Android screen.</span></button>
+          <button class="tool-tile" data-jump="service"><span class="tile-icon">⚙</span><strong>Device service</strong><span>Open dedicated Android and iPhone &amp; iPad service pages.</span></button>
+          <button class="tool-tile" data-jump="mirror"><span class="tile-icon">▱</span><strong>Screen mirror</strong><span>Preview an Android screen or camera over USB or Wi-Fi.</span></button>
           <button class="tool-tile" data-jump="records-review"><span class="tile-icon">▤</span><strong>Chats &amp; records</strong><span>Review WhatsApp text exports and supported phone databases.</span></button>
           <button class="tool-tile" data-jump="repair"><span class="tile-icon">✚</span><strong>Repair files</strong><span>Assess supported photo, video, audio, and Office file damage.</span></button>
           <button class="tool-tile" data-jump="security"><span class="tile-icon">◇</span><strong>Security scan</strong><span>Check a local sample or review security log indicators.</span></button>
@@ -89,10 +97,39 @@
         </section>
       </section>
 
-      <section id="devices" class="view" aria-labelledby="devices-title" hidden>
-        <header><h1 id="devices-title">Devices &amp; storage</h1><p>See connected devices and the locations available for read-only inspection.</p></header>
-        <section class="card"><div class="section-top"><h2>Storage inventory</h2><button data-action id="refresh-devices">Refresh devices</button></div><p id="storage-inventory-note" class="muted" hidden></p><div id="device-metrics" class="metrics"></div><div id="disk-list" class="disk-list"></div></section>
-        <section class="card output-card"><div class="section-top"><h2>Connected USB devices</h2><button class="jump-button" data-jump="my-devices">Open phone options</button></div><div id="usb-list" class="disk-list"></div></section>
+      <section id="devices" class="view storage-view" aria-labelledby="devices-title" hidden>
+        <header class="section-top"><div><h1 id="devices-title">Devices &amp; storage</h1><p>Inspect connected drives, phones, and mounted volumes.</p></div><button data-action id="refresh-devices">Refresh inventory</button></header>
+        <div class="storage-overview" id="device-metrics"></div>
+        <p id="storage-inventory-note" class="muted" hidden></p>
+        <div class="storage-workspace">
+          <div class="storage-main">
+            <section class="card storage-inventory">
+              <div class="section-top"><h2>Storage inventory</h2></div>
+              <div class="storage-filters" id="storage-filters" role="group" aria-label="Storage category">
+                <button data-action data-storage-filter="all" aria-pressed="true">All</button>
+                <button data-action data-storage-filter="internal" aria-pressed="false">Internal</button>
+                <button data-action data-storage-filter="external" aria-pressed="false">External</button>
+                <button data-action data-storage-filter="virtual" aria-pressed="false">Images &amp; virtual</button>
+              </div>
+              <div class="storage-disk-list" id="disk-list"></div>
+            </section>
+            <section class="card output-card">
+              <div class="section-top"><h2>Connected phones</h2><button class="jump-button" data-jump="my-devices">Connection setup</button></div>
+              <div class="storage-phone-list" id="storage-phone-list"></div>
+            </section>
+            <details class="card output-card"><summary><strong>USB peripherals</strong></summary><div id="usb-list" class="disk-list"></div></details>
+          </div>
+          <aside class="card storage-detail" aria-labelledby="storage-detail-title">
+            <div class="storage-detail-heading"><span class="storage-icon" id="storage-detail-icon" aria-hidden="true">▤</span><div><h2 id="storage-detail-title">Selected device</h2><p class="muted" id="storage-detail-subtitle">Select a drive, volume, or phone.</p></div></div>
+            <div class="storage-chart" id="storage-chart" hidden>
+              <canvas id="capacity-ring" width="200" height="200" role="img"></canvas>
+              <div class="storage-capacity-text"><strong id="capacity-total"></strong><span id="capacity-scope"></span></div>
+              <div class="storage-chart-key"><span><i></i> <span id="capacity-used"></span></span><span><i></i> <span id="capacity-free"></span></span></div>
+            </div>
+            <dl class="storage-specs" id="storage-specs"></dl>
+            <div id="storage-detail-actions" class="actions"></div>
+          </aside>
+        </div>
       </section>
 
       <section id="scan" class="view" aria-labelledby="scan-title" hidden>
@@ -104,7 +141,7 @@
           <div class="scan-options">
             <label>Storage type<select id="storage"><option value="auto">Unspecified</option><option value="memory-card">Memory card</option><option value="hdd">Hard disk</option><option value="ssd">SSD / NVMe</option><option value="ufs">UFS</option><option value="emmc">eMMC</option><option value="usb-flash">USB flash</option><option value="optical">Optical</option><option value="camera">Camera storage</option><option value="iot">IoT device storage</option><option value="virtual-disk">Virtual disk</option><option value="other">Other</option></select></label>
             <label>Media to scan<select id="scan-media"><option value="">All supported media</option><optgroup label="Photos"><option value="jpeg">JPEG photo</option><option value="png">PNG photo</option></optgroup><optgroup label="Video"><option value="mp4">MP4 video</option><option value="mov">MOV video</option></optgroup><optgroup label="Audio"><option value="wav">WAV audio (PCM)</option></optgroup></select></label>
-            <details><summary>Scan a byte range</summary><div class="range"><label>Offset<input id="offset" inputmode="numeric" placeholder="0"></label><label>Length<input id="length" inputmode="numeric" placeholder="To end of image"></label></div></details>
+            <details id="scan-range-settings"><summary>Scan a byte range</summary><div class="range"><label>Offset<input id="offset" inputmode="numeric" placeholder="0"></label><label>Length<input id="length" inputmode="numeric" placeholder="To end of image"></label></div></details>
             <button class="primary" data-action id="start-scan" disabled>Scan disk image</button>
           </div>
           <details class="card output-card" id="source-hex-panel"><summary>Inspect source bytes</summary><div class="filters"><label>Logical offset<input id="hex-offset" inputmode="numeric" placeholder="0"></label><label>Bytes<input id="hex-length" inputmode="numeric" placeholder="64"></label><button data-action id="read-hex">Read bytes</button></div><pre id="source-hex" hidden></pre></details>
@@ -141,8 +178,13 @@
       </section>
 
       <section id="capture" class="view" aria-labelledby="capture-title" hidden>
-        <header><h1 id="capture-title">Capture &amp; clone</h1><p>Choose a source to enable the Before and After capture buttons.</p></header>
-        <section class="card output-card">
+        <header><h1 id="capture-title">Capture &amp; clone</h1><p>Collect a connected device, compare captures, or verify a saved backup.</p></header>
+        <div class="storage-filters capture-tabs" role="group" aria-label="Capture workflow">
+          <button data-action data-capture-tab="device" aria-pressed="true">Connected device</button>
+          <button data-action data-capture-tab="snapshots" aria-pressed="false">Before &amp; after</button>
+          <button data-action data-capture-tab="history" aria-pressed="false">Backup history</button>
+        </div>
+        <section class="card output-card capture-panel" id="capture-panel-device">
           <h2>Acquire from a connected device</h2>
           <p class="muted">Capture authorized Android shared files or device details, an iOS backup, or PTP camera files with a SHA-256 manifest.</p>
           <div class="field-row">
@@ -156,12 +198,12 @@
           </div>
           <p class="muted" id="acquisition-status">Install the platform's ADB, libimobiledevice, or gPhoto2 helper. Unlock the phone and approve its USB prompt when requested.</p>
         </section>
-        <section class="card output-card">
+        <section class="card output-card capture-panel" id="capture-panel-history" hidden>
           <div class="section-top"><h2>Backup history</h2><button data-action id="choose-history">Choose backup folder</button></div>
           <p class="muted" id="history-folder">Choose the parent folder where you saved your captures.</p>
           <div class="disk-list" id="history-list"></div>
         </section>
-        <section class="card"><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button class="primary" data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a folder or phone export to begin.</p>
+        <section class="card capture-panel" id="capture-panel-snapshots" hidden><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button class="primary" data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a folder or phone export to begin.</p>
           <div class="source-pair"><div><h2>Before capture</h2><p class="muted" id="before-capture-state">No capture saved.</p><button class="primary" data-action id="capture-before">Capture before</button></div><div><h2>After capture</h2><p class="muted" id="after-capture-state">No capture saved.</p><button data-action id="capture-after">Capture after</button></div></div>
           <div class="actions device-actions"><button data-action id="compare-saved-captures">Compare saved captures</button><button data-action id="clone-image" hidden>Clone image file</button></div>
           <p class="muted">Snapshots save hashes and observations. On macOS, choose <strong>Existing disk image</strong> to clone an image file to a separate physical drive.</p>
@@ -196,27 +238,86 @@
       </section>
 
       <section id="service" class="view" aria-labelledby="service-title" hidden>
-        <header><h1 id="service-title">Device service</h1><p>Check the device and its current boot mode before making changes.</p></header>
-        <section class="card output-card">
-          <div class="section-top"><h2>Android bootloader</h2><button data-action id="detect-fastboot">Detect fastboot devices</button></div>
-          <p id="fastboot-state" class="muted">Connect a device in fastboot mode. This check uses Android SDK Platform-Tools.</p>
+        <header><h1 id="service-title">Device service</h1><p>Choose a platform for device diagnostics and recovery controls.</p></header>
+        <div class="tool-grid service-choices">
+          <button class="tool-tile mint" data-jump="service-android">
+            <span class="tile-icon" aria-hidden="true">▯</span><strong>Android</strong><span>Read specifications, capture files, check fastboot, and open Screen mirror.</span><span class="tile-arrow" aria-hidden="true">→</span>
+          </button>
+          <button class="tool-tile sky" data-jump="service-ios">
+            <span class="tile-icon" aria-hidden="true">◈</span><strong>iPhone &amp; iPad</strong><span>Find trusted USB devices, capture backups, and inspect Recovery or DFU mode.</span><span class="tile-arrow" aria-hidden="true">→</span>
+          </button>
+          <button class="tool-tile lavender" data-jump="service-firmware">
+            <span class="tile-icon" aria-hidden="true">⇩</span><strong>Firmware preflight</strong><span>Verify a local firmware image against a vendor digest and save a review plan.</span><span class="tile-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="service-android" class="view" aria-labelledby="service-android-title" hidden>
+        <header><button class="service-back" data-jump="service" data-action>← Device service</button><h1 id="service-android-title">Android service</h1><p>Check USB or Wireless debugging and inspect the selected phone.</p></header>
+        <div class="service-workspace">
+          <section class="card service-target-panel">
+            <div class="storage-detail-heading"><span class="storage-icon" aria-hidden="true">▯</span><h2>Connected Android phones</h2></div>
+            <div class="mirror-form">
+              <label>Connection<select id="service-android-transport"><option value="android">USB debugging</option><option value="android_wireless">Paired Wi-Fi</option></select></label>
+              <label>Selected phone<select id="service-android-device"><option value="">Choose an authorized phone</option></select></label>
+            </div>
+            <p class="muted" id="service-android-state" aria-live="polite">Refresh to detect phones.</p>
+            <div class="actions">
+              <button data-action id="refresh-service-android">Refresh phones</button>
+              <button data-action id="service-read-specs">Read device specs</button>
+              <button data-action id="service-capture">Capture files</button>
+            </div>
+            <dl class="storage-specs" id="service-specs"></dl>
+          </section>
+          <section class="card service-target-panel">
+            <div class="storage-detail-heading"><span class="storage-icon" aria-hidden="true">↻</span><h2>Fastboot</h2></div>
+            <p id="fastboot-state" class="muted" aria-live="polite">Connect a device already in fastboot mode to inspect it.</p>
+            <button data-action id="detect-fastboot">Detect fastboot</button>
+          </section>
+        </div>
+        <section class="card output-card"><div class="section-top"><div><h2>Screen mirror</h2><p class="muted">Choose a phone in the dedicated scrcpy preview window.</p></div><button data-action id="open-mirror-tool">Open Screen mirror</button></div></section>
+      </section>
+
+      <section id="service-ios" class="view" aria-labelledby="service-ios-title" hidden>
+        <header><button class="service-back" data-jump="service" data-action>← Device service</button><h1 id="service-ios-title">iPhone &amp; iPad service</h1><p>Connect by USB. Unlock the device and approve the trust prompt for normal-mode operations.</p></header>
+        <section class="card service-target-panel">
+          <div class="storage-detail-heading"><span class="storage-icon" aria-hidden="true">◈</span><h2>Normal, Recovery &amp; DFU</h2></div>
+          <div class="actions device-actions"><button data-action id="detect-normal-ios">Detect normal mode</button><button data-action id="detect-ios-recovery">Check Recovery / DFU</button></div>
+          <p id="service-ios-state" class="muted" aria-live="polite">Select the detection option for the current boot mode.</p>
+          <label>Selected device<select id="service-ios-device"><option value="">Detect a device to continue</option></select></label>
+          <div class="actions"><button data-action id="service-capture-ios">Capture iOS backup</button><button data-action id="change-ios-recovery">Request recovery transition</button></div>
+          <p class="muted">A Recovery Mode transition restarts the device. Save your capture first.</p>
         </section>
-        <section class="card output-card">
-          <h2>iOS Recovery Mode</h2>
-          <div class="actions">
-            <button data-action id="detect-normal-ios">Detect normal iOS devices</button>
-            <button data-action id="detect-ios-recovery">Read Recovery or DFU mode</button>
+      </section>
+
+      <section id="service-firmware" class="view" aria-labelledby="service-firmware-title" hidden>
+        <header><button class="service-back" data-jump="service" data-action>← Device service</button><h1 id="service-firmware-title">Firmware preflight</h1><p>Verify an Android or Apple firmware file and prepare it for signed review.</p></header>
+        <section class="card output-card service-preflight">
+          <div class="section-top"><div><h2>Local firmware image</h2><p class="muted">Match a local firmware image to an independently obtained vendor SHA-256 and save an approval plan.</p></div><button data-action id="pick-firmware">Choose firmware image</button></div>
+          <p class="muted" id="firmware-name">Choose a firmware image to begin.</p>
+          <div class="mirror-form">
+            <label>Case reference<input id="firmware-case" maxlength="80" placeholder="case-001"></label>
+            <label>Device model<input id="firmware-model" maxlength="80" placeholder="Exact model identifier"></label>
+            <label>Target identifier<input id="firmware-target" maxlength="80" placeholder="Device ID"></label>
           </div>
-          <p id="service-ios-state" class="muted">Connect one iPhone or iPad. This workflow uses libimobiledevice and libirecovery.</p>
-          <label>Target<select id="service-ios-device"><option value="">Detect a device to continue</option></select></label>
-          <div class="actions"><button data-action id="change-ios-recovery">Request recovery transition</button></div>
-          <p class="muted">A transition restarts the phone and interrupts active work. Save the current capture first.</p>
+          <label>Vendor SHA-256<input id="firmware-hash" maxlength="64" placeholder="64 hexadecimal characters"></label>
+          <div class="actions"><button class="primary" data-action id="save-firmware-plan">Verify image and save plan</button></div>
         </section>
-        <section class="card output-card">
-          <div class="section-top"><h2>Android screen mirror</h2><button data-action id="detect-mirror">Detect authorized Android phones</button></div>
-          <p class="muted">Display an Android screen through scrcpy. The helper runs a temporary service on the phone. Use this for diagnostics after collection.</p>
-          <label>Android phone<select id="mirror-device"><option value="">Detect a phone to continue</option></select></label>
-          <div class="actions"><button class="primary" data-action id="start-mirror">Open display-only mirror</button></div>
+      </section>
+
+      <section id="mirror" class="view" aria-labelledby="mirror-title" hidden>
+        <header><h1 id="mirror-title">Screen mirror</h1><p>Preview an authorized Android screen or camera in a separate scrcpy window.</p></header>
+        <section class="card mirror-panel">
+          <div class="section-top"><h2>Connected Android phone</h2><button data-action id="detect-mirror">Detect devices</button></div>
+          <div class="mirror-form">
+            <label>Connection<select id="mirror-transport"><option value="android">USB</option><option value="android_wireless">Paired Wi-Fi</option></select></label>
+            <label>Phone<select id="mirror-device"><option value="">Detect a phone to continue</option></select></label>
+            <label>Video<select id="mirror-video"><option value="screen">Screen</option><option value="front_camera">Front camera</option><option value="rear_camera">Rear camera</option></select></label>
+            <label>Audio<select id="mirror-audio"><option value="off">Off</option><option value="device">Device audio</option><option value="microphone">Phone microphone</option></select></label>
+            <label>Quality<select id="mirror-profile"><option value="low_bandwidth">Low bandwidth · 720 px</option><option value="balanced" selected>Balanced · 1280 px</option><option value="high_quality">High quality · 1920 px</option></select></label>
+          </div>
+          <p class="muted" id="mirror-state" aria-live="polite">Camera requires Android 12 or newer. Audio requires Android 11 or newer.</p>
+          <div class="actions"><button class="primary" data-action id="start-mirror">Start live preview</button><button data-action id="stop-mirror">Stop preview</button></div>
         </section>
       </section>
 
@@ -263,10 +364,25 @@
       </section>
 
       <section id="sanitize" class="view" aria-labelledby="sanitize-title" hidden>
-        <header><h1 id="sanitize-title">Storage sanitization</h1><p>Prepare a plan for an evidence-free external disk.</p></header>
-        <div class="warning"><strong>Permanent data loss</strong><p>Executing a sanitization procedure can make all data on the target unrecoverable. This workflow prepares a plan for review. Drive erasure requires two authorized approvals and a qualified method.</p></div>
-        <section class="card"><div class="source-pair"><label>External physical disk<select id="sanitize-disk"><option value="">Choose a drive</option></select></label><label>Goal<select id="sanitize-goal"><option value="clear">Clear</option><option value="purge">Purge</option><option value="destroy">Destroy</option></select></label></div><div class="actions device-actions"><button data-action id="refresh-sanitize">Refresh disks</button><button data-action class="primary" id="make-sanitize-plan">Prepare plan</button></div></section>
-        <section id="sanitize-output" class="card output-card" hidden><div class="section-top"><h2>Plan for review</h2><button data-action id="save-sanitize-report">Export plan</button></div><dl id="sanitize-detail"></dl></section>
+        <header class="section-top"><div><h1 id="sanitize-title">Storage sanitization</h1><p>Identify a target and prepare an approval plan.</p></div><button data-action id="refresh-sanitize">Refresh devices</button></header>
+        <div class="warning"><strong>Permanent data loss</strong><p>Executing sanitization can make data unrecoverable. The desktop tools here prepare plans. An authorized operator must confirm the exact target and method before execution.</p></div>
+        <div class="service-workspace">
+          <section class="card service-target-panel">
+            <div class="storage-detail-heading"><span class="storage-icon" aria-hidden="true">▤</span><div><h2>External physical storage</h2><p class="muted" id="sanitize-disk-state">Checking attached storage…</p></div></div>
+            <label>Eligible drive<select id="sanitize-disk"><option value="">Choose a drive</option></select></label>
+            <label>Goal<select id="sanitize-goal"><option value="clear">Clear</option><option value="purge">Purge</option><option value="destroy">Destroy</option></select></label>
+            <div class="actions"><button data-action class="primary" id="make-sanitize-plan">Prepare drive plan</button></div>
+            <details><summary>Other detected storage</summary><div id="sanitize-exclusions" class="disk-list"></div></details>
+          </section>
+          <section class="card service-target-panel">
+            <div class="storage-detail-heading"><span class="storage-icon" aria-hidden="true">▯</span><div><h2>Connected Android phone</h2><p class="muted" id="sanitize-phone-state">Checking authorized Android USB devices…</p></div></div>
+            <label>Phone<select id="sanitize-phone"><option value="">Choose an authorized phone</option></select></label>
+            <label>Case reference<input id="sanitize-phone-case" maxlength="80" placeholder="case-001"></label>
+            <div class="actions"><button data-action id="save-phone-wipe-plan">Save phone wipe plan</button></div>
+            <p class="muted">The phone plan binds the reported model and selected device identifier to the signed review workflow.</p>
+          </section>
+        </div>
+        <section class="card output-card" id="sanitize-output" hidden><div class="section-top"><h2>Plan for review</h2><button data-action id="save-sanitize-report">Export plan</button></div><dl id="sanitize-detail"></dl></section>
       </section>
 
       <section id="automation" class="view" aria-labelledby="automation-title" hidden>
@@ -275,6 +391,25 @@
 omnirecovery-cli verify /path/to/capture.dd
 omnirecovery-cli scan /path/to/capture.dd --storage memory-card</pre><p class="muted">On macOS, the CLI is inside the app at Contents/MacOS/omnirecovery-cli. On Windows, use the separate CLI executable. Give the agent an explicit local source. Search matches names and relative paths.</p></section>
         <section class="card output-card"><h2>Export destinations</h2><p class="muted">Choose a local folder, mounted NAS, or synced folder for reports and archives. Verified recovery and image cloning use a separate directly attached physical drive on macOS.</p></section>
+      </section>
+
+      <section id="settings" class="view" aria-labelledby="settings-title" hidden>
+        <header class="section-top"><div><h1 id="settings-title">Settings</h1><p>Set defaults for this OmniRecovery workspace.</p></div><button data-action id="reset-settings">Restore defaults</button></header>
+        <div class="service-workspace">
+          <section class="card service-target-panel">
+            <h2>Workspace</h2>
+            <label class="setting-check"><input id="settings-windows" type="checkbox">Open Toolbox tools in separate windows</label>
+            <label class="setting-check"><input id="settings-sidebar" type="checkbox">Use compact navigation</label>
+            <label class="setting-check"><input id="settings-refresh" type="checkbox">Refresh connected USB phones automatically</label>
+            <label>USB refresh interval<select id="settings-interval"><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option></select></label>
+          </section>
+          <section class="card service-target-panel">
+            <h2>Capture and preview</h2>
+            <label>Default Android capture scope<select id="settings-scope"><option value="shared">Shared storage</option><option value="camera">Camera folder</option><option value="documents">Documents</option><option value="device_info">Device info only</option></select></label>
+            <label>USB mirror quality<select id="settings-usb-quality"><option value="low_bandwidth">Low bandwidth</option><option value="balanced">Balanced</option><option value="high_quality">High quality</option></select></label>
+            <label>Wi-Fi mirror quality<select id="settings-wifi-quality"><option value="low_bandwidth">Low bandwidth</option><option value="balanced">Balanced</option><option value="high_quality">High quality</option></select></label>
+          </section>
+        </div>
       </section>
 
       <div id="status" class="status" role="status" aria-live="polite" hidden><span id="spinner" class="spinner" hidden></span><span id="status-text"></span></div>

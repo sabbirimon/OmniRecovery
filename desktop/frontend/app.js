@@ -82,15 +82,17 @@ function pick(button, slot, label, reset) {
 
 function showView(id) {
     for (const view of document.querySelectorAll('.view')) view.hidden = view.id !== id;
+    const navView = id.startsWith('service-') ? 'service' : id;
     for (const nav of document.querySelectorAll('[data-view]')) {
-      nav.classList.toggle('active', nav.dataset.view === id);
-      if (nav.dataset.view === id) nav.setAttribute('aria-current', 'page');
+      nav.classList.toggle('active', nav.dataset.view === navView);
+      if (nav.dataset.view === navView) nav.setAttribute('aria-current', navView === id ? 'page' : 'location');
       else nav.removeAttribute('aria-current');
     }
     if (id !== 'transfer') {
       el('password').value = '';
       el('confirm-password').value = '';
     }
+    document.scrollingElement.scrollTop = 0;
     status('');
     document.dispatchEvent(new CustomEvent('view-changed', {detail: id}));
 }

@@ -580,20 +580,82 @@ pub(super) async fn change_ios_recovery(id: String, enter: bool) -> Result<(), S
     .await
 }
 
-#[tauri::command]
-pub(super) async fn mirror_android(id: String) -> Result<(), String> {
-    work(move || {
-        let mut child = omnirecovery::start_android_mirror(&id).map_err(error)?;
-        std::thread::sleep(std::time::Duration::from_millis(600));
-        if child.try_wait().map_err(error)?.is_some() {
-            return Err("The screen mirror helper closed before opening a session.".into());
+#[derive(Default)]
+pub(super) struct MirrorSession(Arc<Mutex<Option<std::process::Child>>>);
+
+impl MirrorSession {
+    pub(super) fn stop_on_exit(&self) {
+        if let Ok(mut child) = self.0.lock()
+            && let Some(mut process) = child.take()
+        {
+            let _ = process.kill();
+            let _ = process.wait();
         }
-        std::thread::spawn(move || {
-            let _ = child.wait();
-        });
+    }
+}
+
+#[tauri::command]
+pub(super) async fn android_details(
+    id: String,
+    transport: omnirecovery::Transport,
+) -> Result<omnirecovery::AndroidDetails, String> {
+    work(move || omnirecovery::inspect_android_details(transport, &id).map_err(error)).await
+}
+
+fn mirror_running(child: &mut Option<std::process::Child>) -> Result<bool, String> {
+    let Some(process) = child.as_mut() else {
+        return Ok(false);
+    };
+    if process.try_wait().map_err(error)?.is_some() {
+        *child = None;
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+pub(super) fn mirror_active(state: State<'_, MirrorSession>) -> Result<bool, String> {
+    let mut child = state.0.lock().map_err(error)?;
+    mirror_running(&mut child)
+}
+
+#[tauri::command]
+pub(super) async fn stop_mirror(state: State<'_, MirrorSession>) -> Result<(), String> {
+    let session = state.0.clone();
+    work(move || {
+        let mut current = session.lock().map_err(error)?;
+        if mirror_running(&mut current)?
+            && let Some(mut child) = current.take()
+        {
+            let _ = child.kill();
+            child.wait().map_err(error)?;
+        }
         Ok(())
     })
     .await
+}
+
+#[tauri::command]
+pub(super) async fn mirror_android(
+    state: State<'_, MirrorSession>,
+    id: String,
+    transport: omnirecovery::Transport,
+    options: omnirecovery::MirrorOptions,
+) -> Result<(), String> {
+    let session = state.0.clone();
+    work(move || {
+        let mut current = session.lock().map_err(error)?;
+        if mirror_running(&mut current)? {
+            return Err("Stop the active preview before starting another in this window.".into());
+        }
+        let mut child = omnirecovery::start_android_preview(transport, &id, options).map_err(error)?;
+        std::thread::sleep(std::time::Duration::from_millis(650));
+        if child.try_wait().map_err(error)?.is_some() {
+            return Err("scrcpy closed before the preview started. Check the installed version and device connection.".into());
+        }
+        *current = Some(child);
+        Ok(())
+    }).await
 }
 
 #[tauri::command]
@@ -614,4 +676,79 @@ pub(super) async fn inspect_export_records(
 ) -> Result<omnirecovery::ArtifactReport, String> {
     let source = selected(&state, Source::Artifact)?;
     work(move || omnirecovery::inspect_artifact(&source, kind, 100).map_err(error)).await
+}
+
+#[tauri::command]
+pub(super) async fn firmware_preflight(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    case: String,
+    model: String,
+    target: String,
+    sha256: String,
+) -> Result<Option<String>, String> {
+    let source = selected(&state, Source::Firmware)?;
+    work(move || {
+        let result = app
+            .dialog()
+            .file()
+            .set_title("Save firmware approval plan")
+            .set_file_name("omnirecovery-firmware-plan.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file();
+        let Some(destination) = picked(result)? else {
+            return Ok(None);
+        };
+        omnirecovery::make_action_plan(
+            omnirecovery::SensitiveAction::Firmware,
+            &case,
+            &model,
+            &target,
+            Some((&source, &sha256)),
+            &destination,
+        )
+        .map_err(error)?;
+        Ok(Some(label(&destination)))
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn phone_wipe_plan(
+    app: AppHandle,
+    case: String,
+    id: String,
+) -> Result<Option<String>, String> {
+    work(move || {
+        let phone = omnirecovery::detect_devices(omnirecovery::Transport::Android)
+            .map_err(error)?
+            .into_iter()
+            .find(|device| device.id == id && device.state == "device")
+            .ok_or("Choose a currently authorized Android USB phone.")?;
+        let model = phone
+            .model
+            .as_deref()
+            .ok_or("Android did not report a model for this device.")?;
+        let result = app
+            .dialog()
+            .file()
+            .set_title("Save Android wipe approval plan")
+            .set_file_name("omnirecovery-phone-wipe-plan.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file();
+        let Some(destination) = picked(result)? else {
+            return Ok(None);
+        };
+        omnirecovery::make_action_plan(
+            omnirecovery::SensitiveAction::Wipe,
+            &case,
+            model,
+            &id,
+            None,
+            &destination,
+        )
+        .map_err(error)?;
+        Ok(Some(label(&destination)))
+    })
+    .await
 }

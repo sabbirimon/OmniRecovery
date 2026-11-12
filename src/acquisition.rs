@@ -101,6 +101,12 @@ pub(crate) fn find_helper(program: &str) -> io::Result<PathBuf> {
             .map(PathBuf::from),
         );
     }
+    if program == "scrcpy"
+        && cfg!(target_os = "macos")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        directories.push(PathBuf::from(home).join("Library/Caches/OmniRecovery/tools/scrcpy"));
+    }
     if matches!(program, "adb" | "fastboot") {
         for variable in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
             if let Some(path) = std::env::var_os(variable) {
@@ -355,7 +361,9 @@ pub(crate) fn finish(
     Ok(report)
 }
 
-fn capture_android_info(id: &str, data: &Path) -> io::Result<()> {
+pub(crate) fn android_properties(
+    id: &str,
+) -> io::Result<std::collections::BTreeMap<&'static str, String>> {
     let mut properties = std::collections::BTreeMap::new();
     for (label, property) in [
         ("manufacturer", "ro.product.manufacturer"),
@@ -364,6 +372,8 @@ fn capture_android_info(id: &str, data: &Path) -> io::Result<()> {
         ("android_version", "ro.build.version.release"),
         ("sdk", "ro.build.version.sdk"),
         ("security_patch", "ro.build.version.security_patch"),
+        ("cpu_abi", "ro.product.cpu.abi"),
+        ("build", "ro.build.display.id"),
     ] {
         let mut adb = crate::android_wifi::adb_command()?;
         adb.args(["-s", id, "shell", "getprop", property]);
@@ -379,6 +389,11 @@ fn capture_android_info(id: &str, data: &Path) -> io::Result<()> {
     if !properties.contains_key("model") {
         return Err(invalid("device model could not be read"));
     }
+    Ok(properties)
+}
+
+fn capture_android_info(id: &str, data: &Path) -> io::Result<()> {
+    let properties = android_properties(id)?;
     let mut output = File::create_new(data.join("device-info.json"))?;
     serde_json::to_writer_pretty(&mut output, &properties)?;
     output.write_all(

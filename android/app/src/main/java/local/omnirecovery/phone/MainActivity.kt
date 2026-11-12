@@ -31,11 +31,17 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var archive: Uri? = null
     private var destination: Uri? = null
+    private var backupFiles: List<Uri> = emptyList()
     private lateinit var password: EditText
     private lateinit var status: TextView
     private lateinit var pickArchive: Button
     private lateinit var pickDestination: Button
     private lateinit var restore: Button
+    private lateinit var verify: Button
+    private lateinit var pickBackupFiles: Button
+    private lateinit var createBackup: Button
+    private lateinit var backupPassword: EditText
+    private lateinit var backupConfirm: EditText
     private lateinit var progress: ProgressBar
     private var running = false
 
@@ -55,8 +61,8 @@ class MainActivity : Activity() {
             background = rounded(NAVY)
             setPadding(dp(20), dp(20), dp(20), dp(20))
             addView(label("OmniRecovery", 15f, Color.rgb(176, 205, 255), true))
-            addView(label("Restore files", 28f, Color.WHITE, true), row(top = 7))
-            addView(label("Bring photos, videos and documents from a PC backup or an earlier phone export.", 15f, Color.WHITE), row(top = 7))
+            addView(label("Backup & restore", 28f, Color.WHITE, true), row(top = 7))
+            addView(label("Create an encrypted file backup or restore an archive from a computer or another phone.", 15f, Color.WHITE), row(top = 7))
         }
         body.addView(header, row())
         val sourceCard = card("Backup archive")
@@ -78,7 +84,9 @@ class MainActivity : Activity() {
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
         verifyCard.addView(password, row(top = 7))
-        restore = action("Verify and restore files", true) { startRestore() }
+        verify = action("Verify without restoring", false) { startRestore(true) }
+        verifyCard.addView(verify, row(top = 8))
+        restore = action("Verify and restore files", true) { startRestore(false) }
         verifyCard.addView(restore, row(top = 12))
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = true
@@ -91,6 +99,18 @@ class MainActivity : Activity() {
         }
         verifyCard.addView(status, row(top = 9))
         body.addView(verifyCard, row(top = 12))
+
+        val backupCard = card("Create a phone file backup")
+        backupCard.addView(label("Select photos, videos, or other files. The desktop app can restore the resulting archive.", 14f, MUTED), row(top = 4))
+        pickBackupFiles = action("Choose files", false) { chooseBackupFiles() }
+        backupCard.addView(pickBackupFiles, row(top = 8))
+        backupPassword = passphraseField("New backup passphrase")
+        backupConfirm = passphraseField("Repeat passphrase")
+        backupCard.addView(backupPassword, row(top = 7))
+        backupCard.addView(backupConfirm, row(top = 7))
+        createBackup = action("Save encrypted backup", true) { chooseBackupOutput() }
+        backupCard.addView(createBackup, row(top = 10))
+        body.addView(backupCard, row(top = 12))
         updateControls()
     }
 
@@ -110,12 +130,57 @@ class MainActivity : Activity() {
         }, PICK_DESTINATION)
     }
 
+    private fun passphraseField(title: String) = EditText(this).apply {
+        hint = title
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        isSingleLine = true
+        importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+    }
+
+    @Suppress("DEPRECATION")
+    private fun chooseBackupFiles() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+        }, PICK_BACKUP_FILES)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun chooseBackupOutput() {
+        val valid = backupPassword.length() in 12..128 &&
+            (0 until backupPassword.length()).all { backupPassword.text[it] in ' '..'~' }
+        val matching = backupPassword.length() == backupConfirm.length() &&
+            (0 until backupPassword.length()).all { backupPassword.text[it] == backupConfirm.text[it] }
+        if (!valid || !matching) {
+            backupConfirm.error = "Enter matching 12–128 character passphrases."
+            return
+        }
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/octet-stream"
+            putExtra(Intent.EXTRA_TITLE, "OmniRecovery-phone.omnibackup")
+            putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+        }, CREATE_BACKUP)
+    }
+
     @Deprecated("Uses platform document pickers without an AndroidX dependency")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
+        if (requestCode == PICK_BACKUP_FILES) {
+            backupFiles = data?.clipData?.let { clip ->
+                (0 until minOf(clip.itemCount, 1025)).map { clip.getItemAt(it).uri }.distinct()
+            } ?: listOfNotNull(data?.data)
+            if (backupFiles.size > 1024) backupFiles = emptyList()
+            pickBackupFiles.text = if (backupFiles.isEmpty()) "Choose up to 1,024 files" else "${backupFiles.size} files selected"
+            updateControls()
+            return
+        }
         val uri = data?.data ?: return
         when (requestCode) {
+            CREATE_BACKUP -> startBackup(uri)
             PICK_ARCHIVE -> {
                 archive = uri
                 pickArchive.text = displayName(uri) ?: "Archive selected"
@@ -129,9 +194,9 @@ class MainActivity : Activity() {
         updateControls()
     }
 
-    private fun startRestore() {
+    private fun startRestore(verifyOnly: Boolean) {
         val source = archive ?: return
-        val tree = destination ?: return
+        val tree = if (verifyOnly) null else destination ?: return
         val passphrase = CharArray(password.length()) { password.text[it] }
         if (passphrase.size !in 12..128 || passphrase.any { it !in ' '..'~' }) {
             passphrase.fill('\u0000')
@@ -151,18 +216,22 @@ class MainActivity : Activity() {
                 cached = file
                 cacheArchive(source, file)
                 val verified = file.inputStream().buffered().use { TransferArchive.read(it, passphrase) }
-                runOnUiThread { status.text = "Archive verified. Restoring ${verified.files} files."
+                if (tree == null) {
+                    "Verified ${verified.files} files and ${verified.bytes} bytes. No restore was performed."
+                } else {
+                    runOnUiThread { status.text = "Archive verified. Restoring ${verified.files} files."
+                    }
+                    val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+                    val fresh = create(parent, DocumentsContract.Document.MIME_TYPE_DIR, "OmniRecovery Restore - incomplete")
+                    folder = fresh
+                    PhoneSink(contentResolver, fresh).use { sink ->
+                        val restored = file.inputStream().buffered().use { TransferArchive.read(it, passphrase, sink) }
+                        check(restored == verified)
+                    }
+                    val renamed = runCatching { DocumentsContract.renameDocument(contentResolver, fresh, "OmniRecovery Restore") }.getOrNull()
+                    val name = displayName(renamed ?: fresh) ?: "the new destination folder"
+                    "Restored and verified ${verified.files} files in $name."
                 }
-                val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
-                val fresh = create(parent, DocumentsContract.Document.MIME_TYPE_DIR, "OmniRecovery Restore - incomplete")
-                folder = fresh
-                PhoneSink(contentResolver, fresh).use { sink ->
-                    val restored = file.inputStream().buffered().use { TransferArchive.read(it, passphrase, sink) }
-                    check(restored == verified)
-                }
-                val renamed = runCatching { DocumentsContract.renameDocument(contentResolver, fresh, "OmniRecovery Restore") }.getOrNull()
-                val name = displayName(renamed ?: fresh) ?: "the new destination folder"
-                "Restored and verified ${verified.files} files in $name."
             } catch (_: Exception) {
                 if (folder == null) "Restore stopped before writing files. Check the passphrase, archive and available space."
                 else "Restore stopped. The new folder may contain partial results. Existing folders were left in place."
@@ -173,6 +242,70 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (!isDestroyed) {
                     running = false
+                    status.text = message
+                    updateControls()
+                }
+            }
+        }
+    }
+
+    private fun startBackup(output: Uri) {
+        val files = backupFiles
+        val passphrase = CharArray(backupPassword.length()) { backupPassword.text[it] }
+        backupPassword.text.clear()
+        backupConfirm.text.clear()
+        running = true
+        createBackup.text = "Creating and verifying backup…"
+        updateControls()
+        executor.execute {
+            var cached: File? = null
+            val message = try {
+                val inputs = files.map { uri ->
+                    ArchiveInput(displayName(uri) ?: throw IOException("Missing filename")) {
+                        contentResolver.openInputStream(uri) ?: throw IOException("Could not open selected file")
+                    }
+                }
+                val file = File.createTempFile("backup-", ".encrypted", cacheDir)
+                cached = file
+                val result = file.outputStream().buffered().use { TransferArchive.write(it, passphrase, inputs) }
+                check(file.inputStream().buffered().use { TransferArchive.read(it, passphrase) } == result)
+                val fileDigest = MessageDigest.getInstance("SHA-256")
+                val digest = file.inputStream().use { source ->
+                    val buffer = ByteArray(1024 * 1024)
+                    val target = contentResolver.openOutputStream(output, "w") ?: throw IOException("Could not open the chosen destination")
+                    target.use { sink ->
+                        while (true) {
+                            val count = source.read(buffer)
+                            if (count < 0) break
+                            fileDigest.update(buffer, 0, count)
+                            sink.write(buffer, 0, count)
+                        }
+                    }
+                    fileDigest.digest()
+                }
+                val stored = contentResolver.openInputStream(output) ?: throw IOException("Could not recheck the saved backup")
+                val storedDigest = stored.use { source ->
+                    val buffer = ByteArray(1024 * 1024)
+                    while (true) {
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        fileDigest.update(buffer, 0, count)
+                    }
+                    fileDigest.digest()
+                }
+                check(MessageDigest.isEqual(digest, storedDigest))
+                "Saved and verified ${result.files} files."
+            } catch (_: Exception) {
+                runCatching { DocumentsContract.deleteDocument(contentResolver, output) }
+                "Backup stopped. Check selected names, access, and available space."
+            } finally {
+                passphrase.fill(' ')
+                cached?.delete()
+            }
+            runOnUiThread {
+                if (!isDestroyed) {
+                    running = false
+                    createBackup.text = "Save encrypted backup"
                     status.text = message
                     updateControls()
                 }
@@ -202,6 +335,11 @@ class MainActivity : Activity() {
         pickDestination.isEnabled = !running
         password.isEnabled = !running
         restore.isEnabled = !running && archive != null && destination != null
+        verify.isEnabled = !running && archive != null
+        pickBackupFiles.isEnabled = !running
+        backupPassword.isEnabled = !running
+        backupConfirm.isEnabled = !running
+        createBackup.isEnabled = !running && backupFiles.isNotEmpty()
         progress.visibility = if (running) View.VISIBLE else View.GONE
     }
 
@@ -247,6 +385,8 @@ class MainActivity : Activity() {
     private companion object {
         const val PICK_ARCHIVE = 10
         const val PICK_DESTINATION = 11
+        const val PICK_BACKUP_FILES = 12
+        const val CREATE_BACKUP = 13
         val BACKGROUND = Color.rgb(242, 247, 252)
         val NAVY = Color.rgb(20, 45, 82)
         val BLUE = Color.rgb(34, 87, 207)

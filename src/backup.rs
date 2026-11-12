@@ -183,12 +183,36 @@ fn make_backup(
     })
 }
 
+fn reserved_device_name(part: &str) -> bool {
+    let stem = part
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) {
+        return true;
+    }
+    stem.strip_prefix("COM")
+        .or_else(|| stem.strip_prefix("LPT"))
+        .is_some_and(|suffix| {
+            matches!(
+                suffix,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+}
+
 fn portable_path(path: &str) -> bool {
     path.len() <= 1024
         && path.split('/').all(|part| {
             !part.is_empty()
                 && part.len() <= 255
                 && !part.ends_with(['.', ' '])
+                && !reserved_device_name(part)
                 && !part.chars().any(|ch| {
                     ch.is_control() || matches!(ch, '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
                 })

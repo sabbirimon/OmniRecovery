@@ -15,7 +15,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use omnirecovery::{Catalogue, MediaType, RepairReport, ScanOptions, ScanReport, StorageProfile};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FilePath};
 use zeroize::Zeroizing;
 
@@ -41,6 +41,7 @@ enum Source {
     BackupHistory,
     Evidence,
     Artifact,
+    Firmware,
     Security,
 }
 
@@ -569,6 +570,7 @@ fn main() {
     };
     tauri::Builder::default()
         .manage(startup)
+        .manage(workflows::MirrorSession::default())
         .setup(move |app| {
             tool_window::set_title(app, startup)?;
             Ok(())
@@ -594,7 +596,12 @@ fn main() {
             workflows::fastboot_devices,
             workflows::ios_recovery_device,
             workflows::change_ios_recovery,
+            workflows::android_details,
+            workflows::firmware_preflight,
+            workflows::phone_wipe_plan,
             workflows::mirror_android,
+            workflows::mirror_active,
+            workflows::stop_mirror,
             workflows::capture_usb_device,
             workflows::choose_volume,
             workflows::discover_phones,
@@ -619,6 +626,11 @@ fn main() {
             save_media,
             save_report
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to launch OmniRecovery");
+        .build(tauri::generate_context!())
+        .expect("failed to launch OmniRecovery")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                app.state::<workflows::MirrorSession>().stop_on_exit();
+            }
+        });
 }

@@ -18,6 +18,30 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run an installed ALEAPP or iLEAPP parser against a verified export copy.
+    AnalyzeLeapp {
+        #[arg(value_enum)]
+        engine: omnirecovery::LeappEngine,
+        input: PathBuf,
+        destination: PathBuf,
+        #[arg(long, value_enum, default_value = "fs")]
+        format: omnirecovery::LeappInput,
+        #[arg(long)]
+        checkout: PathBuf,
+        #[arg(long)]
+        python: PathBuf,
+        #[arg(long)]
+        script_sha256: String,
+    },
+    /// List deleted files using the installed Sleuth Kit fls against a raw image copy.
+    TskDeleted {
+        image: PathBuf,
+        destination: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        sector_offset: u64,
+        #[arg(long, default_value_t = 512)]
+        sector_size: u32,
+    },
     /// Export a scanned finding using its original offset, length and recorded SHA-256 values.
     Recover {
         image: PathBuf,
@@ -56,7 +80,23 @@ enum Command {
     /// List connected Android fastboot USB targets.
     FastbootDevices,
     /// Open a display-only local Android screen mirror.
-    MirrorAndroid { id: String },
+    MirrorAndroid {
+        id: String,
+        #[arg(long, value_enum, default_value = "android")]
+        transport: Transport,
+        #[arg(long, value_enum, default_value = "balanced")]
+        profile: omnirecovery::MirrorProfile,
+        #[arg(long, value_enum, default_value = "screen")]
+        video: omnirecovery::MirrorVideo,
+        #[arg(long, value_enum, default_value = "off")]
+        audio: omnirecovery::MirrorAudio,
+    },
+    /// Inspect reported Android specs and shared storage.
+    AndroidDetails {
+        id: String,
+        #[arg(long, value_enum, default_value = "android")]
+        transport: Transport,
+    },
     /// Create an expiring, device-bound firmware or sanitization review plan.
     PlanAction {
         #[arg(value_enum)]
@@ -346,6 +386,36 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let mut output = io::stdout().lock();
     match command {
+        Command::AnalyzeLeapp {
+            engine,
+            input,
+            destination,
+            format,
+            checkout,
+            python,
+            script_sha256,
+        } => {
+            let report = omnirecovery::analyze_leapp(
+                engine,
+                format,
+                &input,
+                &checkout,
+                &python,
+                &script_sha256,
+                &destination,
+            )?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::TskDeleted {
+            image,
+            destination,
+            sector_offset,
+            sector_size,
+        } => {
+            let report =
+                omnirecovery::tsk_deleted(&image, &destination, sector_offset, sector_size)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
         Command::Recover {
             image,
             destination,
@@ -412,11 +482,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::FastbootDevices => {
             serde_json::to_writer_pretty(&mut output, &omnirecovery::android_fastboot_devices()?)?
         }
-        Command::MirrorAndroid { id } => {
-            if !omnirecovery::start_android_mirror(&id)?.wait()?.success() {
-                return Err(
-                    io::Error::other("the screen mirror helper exited with an error").into(),
-                );
+        Command::AndroidDetails { id, transport } => {
+            let details = omnirecovery::inspect_android_details(transport, &id)?;
+            serde_json::to_writer_pretty(&mut output, &details)?;
+        }
+        Command::MirrorAndroid {
+            id,
+            transport,
+            profile,
+            video,
+            audio,
+        } => {
+            let options = omnirecovery::MirrorOptions {
+                profile,
+                video,
+                audio,
+            };
+            if !omnirecovery::start_android_preview(transport, &id, options)?
+                .wait()?
+                .success()
+            {
+                return Err(io::Error::other("the scrcpy window exited with an error").into());
             }
             serde_json::to_writer_pretty(
                 &mut output,

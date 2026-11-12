@@ -7,6 +7,7 @@ mod catalogue;
 mod cloud;
 mod custody;
 mod device_service;
+mod external_analysis;
 mod fat32;
 mod http;
 mod media;
@@ -55,9 +56,11 @@ pub use custody::{
     CustodyAction, CustodyHead, append_custody, generate_custody_key, verify_custody,
 };
 pub use device_service::{
-    IosRecoveryDevice, android_fastboot_devices, ios_enter_recovery, ios_exit_recovery,
-    ios_recovery_status, start_android_mirror,
+    AndroidDetails, AndroidStorage, IosRecoveryDevice, MirrorAudio, MirrorOptions, MirrorProfile,
+    MirrorVideo, android_fastboot_devices, inspect_android_details, ios_enter_recovery,
+    ios_exit_recovery, ios_recovery_status, start_android_mirror, start_android_preview,
 };
+pub use external_analysis::{LeappEngine, LeappInput, analyze_leapp, tsk_deleted};
 pub use fat32::{
     DeletedFatFile, FatExportReport, FatUndeleteReport, recover_fat32_deleted, scan_fat32_deleted,
 };

@@ -17,6 +17,8 @@ pub struct Disk {
     pub internal: bool,
     pub physical: bool,
     pub solid_state: Option<bool>,
+    pub block_size: Option<u64>,
+    pub partition_map: Option<String>,
     pub volumes: Vec<Volume>,
 }
 
@@ -28,6 +30,7 @@ pub struct Volume {
     pub format: Option<String>,
     pub mount: Option<PathBuf>,
     pub free: Option<u64>,
+    pub capacity_scope: Option<&'static str>,
     pub writable: Option<bool>,
     #[serde(skip)]
     pub uuid: Option<String>,
@@ -317,6 +320,8 @@ mod mac {
                 internal: flag(&info, "Internal") == Some(true),
                 physical: text(&info, "VirtualOrPhysical") == Some("Physical"),
                 solid_state: flag(&info, "SolidState"),
+                block_size: integer(&info, "DeviceBlockSize"),
+                partition_map: text(record, "Content").map(str::to_owned),
                 volumes,
             });
         }
@@ -357,6 +362,22 @@ mod mac {
             && mount
                 .as_ref()
                 .is_some_and(|path| path.parent() == Some(Path::new("/Volumes")));
+        let container_capacity =
+            integer(info, "APFSContainerSize").zip(integer(info, "APFSContainerFree"));
+        let capacity = if mount.is_some() {
+            container_capacity
+                .or_else(|| {
+                    integer(info, "VolumeSize")
+                        .filter(|value| *value > 0)
+                        .or_else(|| integer(row, "Size"))
+                        .zip(
+                            integer(info, "VolumeFreeSpace").or_else(|| integer(info, "FreeSpace")),
+                        )
+                })
+                .filter(|(size, free)| *size > 0 && *free <= *size)
+        } else {
+            None
+        };
         Volume {
             id: id.into(),
             name: text(row, "VolumeName")
@@ -364,14 +385,21 @@ mod mac {
                 .or_else(|| text(row, "Content"))
                 .unwrap_or(id)
                 .into(),
-            size: integer(row, "Size"),
+            size: capacity
+                .map(|(size, _)| size)
+                .or_else(|| integer(row, "Size")),
             format: text(info, "FilesystemType")
                 .or_else(|| text(row, "Content"))
                 .map(str::to_owned),
             mount,
-            free: integer(info, "VolumeFreeSpace")
-                .or_else(|| integer(info, "APFSContainerFree"))
-                .or_else(|| integer(info, "FreeSpace")),
+            free: capacity.map(|(_, free)| free),
+            capacity_scope: capacity.map(|_| {
+                if container_capacity.is_some() {
+                    "APFS shared container"
+                } else {
+                    "Mounted volume"
+                }
+            }),
             writable: flag(info, "WritableVolume"),
             uuid,
             selectable,

@@ -6,13 +6,13 @@ OmniRecovery is an offline-first media recovery and forensic inspection toolkit 
 
 [Visual guide](docs/visual-guide.md) · [User manual](docs/user-manual.md) · [Capability matrix](docs/capabilities.md) · [MIT license](LICENSE)
 
-[Device acquisition and recovery](docs/acquisition-and-recovery.md) · [Requests and progress](docs/feature-status.md) · [Dr.Fone inventory](docs/drfone-feature-inventory.md) · [3uTools inventory](docs/3utools-feature-inventory.md)
+[Device acquisition and recovery](docs/acquisition-and-recovery.md) · [Requests and progress](docs/feature-status.md) · [Dr.Fone inventory](docs/drfone-feature-inventory.md) · [3uTools inventory](docs/3utools-feature-inventory.md) · [Open-source integrations](docs/forensic-integrations.md)
 
 **Project status.** Development release. The desktop app and CLI acquire authorized Android shared files, iOS logical backups, and PTP camera files through host transport helpers. Physical device and enterprise assurance qualification are ongoing.
 
 ## Open the desktop app
 
-Get the macOS universal DMG, Windows x64 desktop and CLI executables, Linux x64 DEB and standalone CLI from [GitHub Releases](https://github.com/sabbirimon/OmniRecovery/releases). The Android companion is available from the 0.3.0 release. On macOS, open the DMG and drag **OmniRecovery** into **Applications**. The icon is a white ring with teal data tiles on a navy square. The macOS bundle is ad hoc signed and unnotarized. The Android APK is debug signed.
+Get the macOS universal DMG, Windows x64 desktop and CLI executables, Linux x64 DEB and standalone CLI from [GitHub Releases](https://github.com/sabbirimon/OmniRecovery/releases). The Android companion APK is available with current Android preview releases. On macOS, open the DMG and drag **OmniRecovery** into **Applications**. The icon is a white ring with teal data tiles on a navy square. The macOS bundle is ad hoc signed and unnotarized. The Android APK is debug signed.
 
 Open **Toolbox → Scan media → Try demo** to scan a synthetic image and review its JPEG, PNG, MP4 and WAV findings. Use **My devices** for USB and Android Wireless debugging and **Devices & storage** for macOS disk inventory. Use **Capture & clone** to collect connected devices and save a before/after pair, and **Phone clone** to transfer selected files to Android. On macOS, saving recovered media requires a verified separate physical drive. See the [desktop guide](docs/desktop.md).
 
