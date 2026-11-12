@@ -388,3 +388,47 @@ fn browses_and_exports_selected_android_files_then_verifies_archive_delivery() -
     );
     Ok(())
 }
+
+#[test]
+fn live_phone_scans_can_run_concurrently_with_distinct_targets() -> io::Result<()> {
+    let fixture = tempfile::tempdir()?;
+    helper(
+        fixture.path(),
+        "adb",
+        r#"
+        shift 4
+        if [ "$1" = devices ]; then
+            printf 'List of devices attached\nFIRST device usb:1-1 model:First\nSECOND device usb:1-2 model:Second\n'
+            exit
+        fi
+        test "$1" = "-s" && test "$3" = "exec-out"
+        case "$2" in FIRST|SECOND) ;; *) exit 1;; esac
+        printf ready > "$FIXTURE/$2"
+        for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            if [ -f "$FIXTURE/FIRST" ] && [ -f "$FIXTURE/SECOND" ]; then
+                printf '/sdcard/DCIM/%s.jpg\000\000OK\000' "$2"
+                exit
+            fi
+            /bin/sleep 0.1
+        done
+        exit 1
+        "#,
+    )?;
+    let scan = |target| {
+        cli(fixture.path())
+            .env("FIXTURE", fixture.path())
+            .args(["browse-android", target, "--category", "photos"])
+            .output()
+    };
+    let (first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| scan("FIRST"));
+        let second = scan("SECOND");
+        (first.join().unwrap(), second)
+    });
+    for (target, response) in [("FIRST", first?), ("SECOND", second?)] {
+        assert!(response.status.success(), "{response:?}");
+        let report: Value = serde_json::from_slice(&response.stdout)?;
+        assert_eq!(report["entries"][0]["path"], format!("DCIM/{target}.jpg"));
+    }
+    Ok(())
+}

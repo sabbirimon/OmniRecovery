@@ -2,6 +2,11 @@
 
 The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
 
+## 0.3.9 concurrent phone workspaces
+
+- **Open separate workspace** starts an independent window assigned to the selected phone. Workspaces have independent browse results, capture selections, and saved Before and After snapshots.
+- The assigned phone is rechecked before live browsing or capture. A disconnected workspace does not switch targets.
+
 ## 0.3.8 device dashboard, browsing and selective transfer
 
 - Selecting an authorized Android phone opens its device overview with reported specs, available RAM, battery charge, and shared storage. Quick actions keep the selected phone in context.

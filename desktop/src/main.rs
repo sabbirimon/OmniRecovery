@@ -324,10 +324,12 @@ async fn compare_sources(state: State<'_, Shared>, folders: bool) -> Result<Valu
 #[tauri::command]
 async fn browse_phone(
     state: State<'_, Shared>,
+    startup: State<'_, tool_window::Startup>,
     transport: omnirecovery::Transport,
     id: String,
     category: omnirecovery::PhoneCategory,
 ) -> Result<Value, String> {
+    startup.check_phone(transport, &id)?;
     lock(&state)?.phone_browse = None;
     let state = state.inner().clone();
     work(move || {
@@ -762,10 +764,10 @@ fn main() {
         demo: tempfile::tempdir().expect("temporary directory unavailable"),
     };
     tauri::Builder::default()
-        .manage(startup)
+        .manage(startup.clone())
         .manage(workflows::MirrorSession::default())
         .setup(move |app| {
-            tool_window::set_title(app, startup)?;
+            tool_window::set_title(app, &startup)?;
             Ok(())
         })
         .manage(Arc::new(Mutex::new(workspace)))
@@ -773,6 +775,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             tool_window::tool_startup,
             tool_window::open_tool_window,
+            tool_window::open_phone_window,
             pick_source,
             demo_image,
             scan_image,

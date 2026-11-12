@@ -257,11 +257,7 @@ pub fn capture(
         entries,
         incomplete,
     };
-    store(
-        &directory(app, "captures")?.join(stage.file()),
-        &snapshot,
-        true,
-    )?;
+    store(&capture_directory(app)?.join(stage.file()), &snapshot, true)?;
     Ok(summary(&snapshot))
 }
 
@@ -275,8 +271,19 @@ fn summary(capture: &Capture) -> Value {
     json!({"stage":capture.stage,"kind":capture.kind,"name":capture.name,"captured_ms":capture.captured_ms,"entries_count":capture.entries.len(),"incomplete":capture.incomplete,"source_sha256":capture.source_sha256})
 }
 
+fn capture_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = directory(app, "captures")?;
+    if let Some(scope) = app.state::<super::tool_window::Startup>().capture_scope() {
+        let scoped = root.join(scope);
+        fs::create_dir_all(&scoped).map_err(error)?;
+        Ok(scoped)
+    } else {
+        Ok(root)
+    }
+}
+
 fn load_capture(app: &AppHandle, stage: Stage) -> Result<Option<Capture>, String> {
-    let path = directory(app, "captures")?.join(stage.file());
+    let path = capture_directory(app)?.join(stage.file());
     if !path.try_exists().map_err(error)? {
         return Ok(None);
     }

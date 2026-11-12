@@ -46,6 +46,12 @@ Open **My devices** and select the phone. The device page reads the Android spec
 
 If the connection needs authorization, open **Connection setup** and complete the device prompt. Shared-file browsing uses Android USB debugging or an already paired Wireless debugging connection. It lists standard shared folders and reports when the listing reaches its limit. For private records such as SMS, calls, contacts, and chat histories, use a readable export or supported backup.
 
+### Work on several phones
+
+Connect and authorize each phone. In **My devices**, select one phone and choose **Open separate workspace**. Return to the main device list, select the next phone, and open its workspace. You can browse and capture in both windows at once. Each window checks its assigned phone before running a live operation, keeps its own results, and stores separate Before and After snapshots.
+
+If an assigned phone disconnects, reconnect it and select **Refresh devices** in that window. For saved images, open a separate **Scan media** tool window for each image.
+
 ### Transfer selected phone files
 
 1. From the selected phone, choose **Phone clone**. You can also open it from the sidebar and select the source manually.

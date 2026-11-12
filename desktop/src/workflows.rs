@@ -510,10 +510,12 @@ pub(super) async fn list_acquisition_devices(
 #[tauri::command]
 pub(super) async fn capture_usb_device(
     app: AppHandle,
+    startup: State<'_, super::tool_window::Startup>,
     transport: omnirecovery::Transport,
     id: String,
     scope: omnirecovery::AndroidScope,
 ) -> Result<Option<Value>, String> {
+    startup.check_phone(transport, &id)?;
     work(move || {
         let folder = app
             .dialog()

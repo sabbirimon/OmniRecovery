@@ -143,6 +143,10 @@ window.syncWorkspaceControls = () => {
   el('export-log').disabled ||= !activeLog;
   el('move-log').disabled ||= !activeLog;
   for (const id of ['scan-source', 'capture-source-kind', 'log-view', 'sanitize-disk', 'sanitize-phone', 'acquisition-transport', 'acquisition-device', 'acquisition-scope', 'service-ios-device']) el(id).disabled = busy;
+  if (phoneBinding) {
+    el('acquisition-transport').disabled = true;
+    el('acquisition-device').disabled = true;
+  }
 };
 
 function resetCatalogue() {
@@ -458,6 +462,8 @@ let usbPhones = [];
 let wirelessPhones = [];
 let selectedPhone = null;
 let phoneChooserOpen = false;
+let phoneBinding = null;
+let boundInventoryLoaded = false;
 let phonesLoaded = false;
 let phoneRefreshInFlight = false;
 let lastUsbRefresh = 0;
@@ -672,18 +678,26 @@ el('phone-drop-target').addEventListener('click', () => selectQuickTransfer(curr
 
 function phoneKey(phone) { return JSON.stringify([phone.transport, phone.target, phone.name]); }
 
+function matchesPhoneBinding(phone) {
+  return !phoneBinding || (phone.transport === phoneBinding.transport && phone.target === phoneBinding.id);
+}
+
 function renderPhones() {
-  const phones = phoneMode === 'usb' ? usbPhones : wirelessPhones;
+  const phones = (phoneMode === 'usb' ? usbPhones : wirelessPhones).filter(matchesPhoneBinding);
   if (selectedPhone && !phones.some(phone => phoneKey(phone) === selectedPhone)) selectedPhone = null;
   if (!selectedPhone && phones.length === 1) selectedPhone = phoneKey(phones[0]);
   const current = phones.find(phone => phoneKey(phone) === selectedPhone);
-  const showChooser = phoneChooserOpen || !current || !readyPhone(current);
+  const showChooser = !phoneBinding && (phoneChooserOpen || !current || !readyPhone(current));
   el('phone-card-list').hidden = !showChooser;
   el('phone-mode-switch').hidden = !showChooser;
-  el('choose-phone').hidden = !current || !readyPhone(current);
+  el('choose-phone').hidden = Boolean(phoneBinding) || !current || !readyPhone(current);
+  el('open-phone-window').hidden = Boolean(phoneBinding) || !current || !readyPhone(current);
   el('choose-phone').textContent = showChooser ? 'Hide device chooser' : 'Change device';
   const mode = phoneMode === 'usb' ? 'USB' : 'wireless';
-  el('phone-count').textContent = `${number.format(phones.length)} ${mode} ${phones.length === 1 ? 'device' : 'devices'} detected`;
+  el('my-devices-title').textContent = phoneBinding ? 'Phone workspace' : 'My devices';
+  el('phone-count').textContent = phoneBinding
+    ? current && readyPhone(current) ? `Assigned to ${current.name}` : boundInventoryLoaded ? 'Reconnect the assigned phone and refresh.' : 'Checking the assigned phone…'
+    : `${number.format(phones.length)} ${mode} ${phones.length === 1 ? 'device' : 'devices'} detected`;
   const add = text('button', '', 'phone-card phone-card-add');
   add.dataset.action = '';
   add.append(text('span', '+', 'phone-screen'), text('strong', 'Add device'), text('small', 'Connection setup'));
@@ -709,7 +723,7 @@ function renderPhones() {
     });
     return tile;
   }));
-  el('phone-sidebar').replaceChildren(...[...usbPhones, ...wirelessPhones].map(phone => {
+  el('phone-sidebar').replaceChildren(...[...usbPhones, ...wirelessPhones].filter(matchesPhoneBinding).map(phone => {
     const item = text('button', phone.name);
     item.dataset.action = '';
     if (phone === current && !el('my-devices').hidden) item.setAttribute('aria-current', 'true');
@@ -729,9 +743,16 @@ function renderPhones() {
   el('phone-usb-mode').setAttribute('aria-pressed', String(phoneMode === 'usb'));
   el('phone-wireless-mode').setAttribute('aria-pressed', String(phoneMode === 'wireless'));
   el('phone-usb-setup').hidden = phoneMode !== 'usb' || Boolean(current && readyPhone(current));
-  el('phone-wireless-setup').hidden = phoneMode !== 'wireless' || !showChooser;
+  el('phone-wireless-setup').hidden = phoneMode !== 'wireless' || (!showChooser && !(phoneBinding && !current));
   renderPhoneDetails(current);
 }
+
+el('open-phone-window').addEventListener('click', () => {
+  const phone = currentPhone();
+  if (readyPhone(phone || {})) {
+    run('Opening a separate phone workspace…', () => invoke('open_phone_window', {transport:phone.transport, id:phone.target}));
+  }
+});
 
 el('choose-phone').addEventListener('click', () => {
   phoneChooserOpen = !phoneChooserOpen;
@@ -765,6 +786,7 @@ async function loadPhones() {
     const detected = await invoke('list_acquisition_devices', {transport: 'android_wireless'});
     wirelessPhones = detected.map(phone => ({name: phone.model?.replaceAll('_', ' ') || 'Android phone', transport: 'android_wireless', state: phone.state, target: phone.id}));
   }
+  if (phoneBinding) boundInventoryLoaded = true;
   renderPhones();
   return '';
 }
@@ -866,8 +888,9 @@ async function detectAcquisitionDevices() {
   const list = el('acquisition-device');
   const selected = list.value;
   list.replaceChildren(new Option('Choose a connected device', ''));
-  const devices = await invoke('list_acquisition_devices', {transport: el('acquisition-transport').value});
-  const options = devices.map(device => {
+  const transport = el('acquisition-transport').value;
+  const devices = await invoke('list_acquisition_devices', {transport});
+  const options = devices.filter(device => !phoneBinding || (device.id === phoneBinding.id && transport === phoneBinding.transport)).map(device => {
     const option = new Option([device.model?.replaceAll('_',' '), device.id, words(device.state)].filter(Boolean).join(' · '), device.id);
     option.disabled = !['device', 'attached'].includes(device.state);
     return option;
@@ -876,7 +899,9 @@ async function detectAcquisitionDevices() {
   const available = options.filter(option => !option.disabled);
   if (available.some(option => option.value === selected)) list.value = selected;
   else if (available.length === 1) list.value = available[0].value;
-  el('acquisition-status').textContent = devices.length ? 'Choose an authorized device and where to save its capture.' : 'No connected device was reported by the selected transport.';
+  el('acquisition-status').textContent = options.length
+    ? 'Choose an authorized device and where to save its capture.'
+    : phoneBinding ? 'Reconnect this workspace’s assigned phone.' : 'No connected device was reported by the selected transport.';
   return '';
 }
 el('refresh-acquisition').addEventListener('click', () => run('Detecting connected devices…', detectAcquisitionDevices));
@@ -1467,7 +1492,9 @@ document.addEventListener('view-changed', ({detail}) => {
   if (busy) return;
   if (detail === 'my-devices') {
     renderPhones();
-    if (!phonesLoaded && phoneMode === 'usb') run('Checking connected phones…', loadPhones);
+    if (phoneBinding ? !boundInventoryLoaded : !phonesLoaded && phoneMode === 'usb') {
+      run('Checking connected phones…', loadPhones);
+    }
   } else {
     el('phone-sidebar').querySelectorAll('[aria-current]').forEach(item => item.removeAttribute('aria-current'));
     el('phone-sidebar').querySelectorAll('.phone-sidebar-category').forEach(item => item.remove());
@@ -1479,7 +1506,8 @@ document.addEventListener('view-changed', ({detail}) => {
   if ((detail === 'devices' || detail === 'sanitize') && !deviceList) run('Reading connected devices…', updateDevices);
   if (detail === 'capture') run('Loading capture workspace…', async () => {
     await refreshCaptures();
-    if (!el('capture-panel-device').hidden && !el('acquisition-device').value && el('acquisition-transport').value === 'android') {
+    if (!el('capture-panel-device').hidden && !el('acquisition-device').value &&
+        (phoneBinding || el('acquisition-transport').value === 'android')) {
       await detectAcquisitionDevices();
     }
   });
@@ -1495,7 +1523,12 @@ controls();
 
 invoke('tool_startup').then(tool => {
   if (!tool) return;
-  if (tool.view === 'mirror' && tool.scan_source) {
+  if (tool.phone) {
+    phoneBinding = tool.phone;
+    phoneMode = phoneBinding.transport === 'android_wireless' ? 'wireless' : 'usb';
+    el('acquisition-transport').value = phoneBinding.transport;
+    el('acquisition-scope-label').hidden = phoneBinding.transport === 'ios';
+  } else if (tool.view === 'mirror' && tool.scan_source) {
     el('mirror-transport').value = tool.scan_source;
     el('mirror-profile').value = tool.scan_source === 'android_wireless' ? preferences.wifiQuality : preferences.usbQuality;
   } else if (tool.scan_source) {
