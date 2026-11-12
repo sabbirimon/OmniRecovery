@@ -18,6 +18,30 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Pair an Android device using its displayed local Wireless debugging code.
+    PairAndroid { address: String },
+    /// Connect to the device's advertised Wireless debugging address.
+    ConnectAndroid { address: String },
+    /// List completed captures in a selected backup folder.
+    BackupHistory { directory: PathBuf },
+    /// Detect iOS recovery or DFU mode without changing the device.
+    IosRecoveryStatus,
+    /// Request Recovery Mode on an explicitly selected trusted iOS device.
+    IosEnterRecovery {
+        id: String,
+        #[arg(long)]
+        confirm_id: String,
+    },
+    /// Request normal boot for an explicitly selected iOS Recovery Mode target.
+    IosExitRecovery {
+        ecid: String,
+        #[arg(long)]
+        confirm_id: String,
+    },
+    /// List connected Android fastboot USB targets.
+    FastbootDevices,
+    /// Open a display-only local Android screen mirror.
+    MirrorAndroid { id: String },
     /// Create an expiring, device-bound firmware or sanitization review plan.
     PlanAction {
         #[arg(value_enum)]
@@ -304,6 +328,63 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let mut output = io::stdout().lock();
     match command {
+        Command::PairAndroid { address } => {
+            let code = Zeroizing::new(rpassword::prompt_password("Android pairing code: ")?);
+            omnirecovery::pair_android_wifi(&address, &code)?;
+            serde_json::to_writer_pretty(&mut output, &serde_json::json!({"status": "paired"}))?;
+        }
+        Command::ConnectAndroid { address } => {
+            omnirecovery::connect_android_wifi(&address)?;
+            serde_json::to_writer_pretty(&mut output, &serde_json::json!({"status": "connected"}))?;
+        }
+        Command::BackupHistory { directory } => {
+            serde_json::to_writer_pretty(&mut output, &omnirecovery::capture_history(&directory)?)?
+        }
+        Command::IosRecoveryStatus => {
+            serde_json::to_writer_pretty(&mut output, &omnirecovery::ios_recovery_status()?)?
+        }
+        Command::IosEnterRecovery { id, confirm_id } => {
+            if id != confirm_id {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "confirm-id must match the selected device",
+                )
+                .into());
+            }
+            omnirecovery::ios_enter_recovery(&id)?;
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({"status": "recovery_transition_requested"}),
+            )?;
+        }
+        Command::IosExitRecovery { ecid, confirm_id } => {
+            if ecid != confirm_id {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "confirm-id must match the selected ECID",
+                )
+                .into());
+            }
+            omnirecovery::ios_exit_recovery(&ecid)?;
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({"status": "normal_boot_requested"}),
+            )?;
+        }
+        Command::FastbootDevices => {
+            serde_json::to_writer_pretty(&mut output, &omnirecovery::android_fastboot_devices()?)?
+        }
+        Command::MirrorAndroid { id } => {
+            if !omnirecovery::start_android_mirror(&id)?.wait()?.success() {
+                return Err(
+                    io::Error::other("the screen mirror helper exited with an error").into(),
+                );
+            }
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({"status": "mirror_closed"}),
+            )?;
+        }
         Command::PlanAction {
             action,
             destination,

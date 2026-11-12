@@ -37,6 +37,7 @@ enum Source {
     IosExport,
     CaptureFolder,
     CaptureImage,
+    BackupHistory,
     Evidence,
     Security,
 }
@@ -53,6 +54,7 @@ impl Source {
                 | Self::AndroidExport
                 | Self::IosExport
                 | Self::CaptureFolder
+                | Self::BackupHistory
         )
     }
 }
@@ -577,9 +579,17 @@ fn main() {
             media_saving_available,
             workflows::discover_devices,
             workflows::list_acquisition_devices,
+            workflows::backup_history,
+            workflows::verify_history_item,
+            workflows::fastboot_devices,
+            workflows::ios_recovery_device,
+            workflows::change_ios_recovery,
+            workflows::mirror_android,
             workflows::capture_usb_device,
             workflows::choose_volume,
-            workflows::check_adb,
+            workflows::discover_phones,
+            workflows::pair_wireless_android,
+            workflows::connect_wireless_android,
             workflows::scan_catalogue,
             workflows::inspect_catalogue_entry,
             workflows::copy_catalogue_entry,

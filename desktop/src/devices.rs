@@ -1,7 +1,11 @@
+use omnirecovery::{DetectedDevice, Transport, detect_devices};
 use serde::Serialize;
+#[cfg(target_os = "macos")]
 use std::io::{Read, Seek};
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
+#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, Serialize)]
@@ -35,6 +39,8 @@ pub struct UsbDevice {
     pub name: String,
     pub vendor: String,
     pub platform: &'static str,
+    #[serde(skip)]
+    serial: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,6 +83,7 @@ pub fn recheck_volume(_id: &str) -> Option<Volume> {
     None
 }
 
+#[cfg(target_os = "macos")]
 fn command_output(command: &mut Command, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut output = tempfile::tempfile().map_err(|error| error.to_string())?;
     let writer = output.try_clone().map_err(|error| error.to_string())?;
@@ -115,81 +122,126 @@ fn command_output(command: &mut Command, timeout: Duration) -> Result<Vec<u8>, S
     Ok(bytes)
 }
 
-#[cfg(windows)]
-fn adb_path() -> Option<PathBuf> {
-    ["ANDROID_HOME", "ANDROID_SDK_ROOT"]
-        .into_iter()
-        .filter_map(std::env::var_os)
-        .map(PathBuf::from)
-        .chain(std::env::var_os("LOCALAPPDATA").map(|path| PathBuf::from(path).join("Android/Sdk")))
-        .filter(|root| root.is_absolute())
-        .map(|root| root.join("platform-tools/adb.exe"))
-        .find(|path| path.is_file())
-}
-
-#[cfg(not(windows))]
-fn adb_path() -> Option<PathBuf> {
-    [
-        "/opt/homebrew/bin/adb",
-        "/usr/local/bin/adb",
-        "/usr/bin/adb",
-    ]
-    .into_iter()
-    .map(PathBuf::from)
-    .find(|path| path.is_file())
-}
-
-pub fn adb_devices() -> Result<Vec<AdbDevice>, String> {
-    let adb = adb_path()
-        .ok_or("Android platform-tools (adb) are unavailable at a supported local path.")?;
-    let mut command = Command::new(adb);
-    command
-        .env_remove("ADB_SERVER_SOCKET")
-        .env_remove("ANDROID_ADB_SERVER_ADDRESS")
-        .env_remove("ANDROID_ADB_SERVER_PORT")
-        .args(["-H", "127.0.0.1", "-P", "5037", "devices", "-l"]);
-    let output = command_output(&mut command, Duration::from_secs(8))
-        .map_err(|error| format!("ADB could not query the local USB bridge. {error}"))?;
-    Ok(parse_adb(&String::from_utf8_lossy(&output)))
+#[derive(Debug, Serialize)]
+pub struct Phone {
+    pub name: String,
+    pub transport: &'static str,
+    pub usb_detected: bool,
+    pub state: String,
+    pub target: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct AdbDevice {
-    pub model: String,
-    pub state: String,
+pub struct PhoneInventory {
+    pub phones: Vec<Phone>,
+    pub android_error: Option<String>,
+    pub ios_error: Option<String>,
+    pub usb_error: Option<String>,
 }
 
-fn parse_adb(output: &str) -> Vec<AdbDevice> {
-    output
-        .lines()
-        .skip_while(|line| !line.starts_with("List of devices attached"))
-        .skip(1)
-        .filter_map(|line| {
-            let mut columns = line.split_whitespace();
-            let id = columns.next()?;
-            let state = columns.next()?;
-            if id.starts_with("emulator-")
-                || id.contains(':')
-                || id.ends_with("._adb-tls-connect._tcp")
-            {
-                return None;
-            }
-            let model = columns
-                .find_map(|item| item.strip_prefix("model:"))
-                .unwrap_or("Android device")
-                .replace('_', " ");
-            Some(AdbDevice {
-                model,
-                state: match state {
-                    "device" => "authorized",
-                    "unauthorized" => "awaiting_usb_debugging_approval",
-                    "offline" => "offline",
-                    _ => "unavailable",
-                }
-                .into(),
+fn merge_phones(
+    usb: Vec<UsbDevice>,
+    mut android: Vec<DetectedDevice>,
+    mut ios: Vec<DetectedDevice>,
+) -> Vec<Phone> {
+    let mut phones = Vec::new();
+    for physical in usb {
+        let (targets, transport) = match physical.platform {
+            "Android" => (&mut android, "android"),
+            "iOS" => (&mut ios, "ios"),
+            _ => continue,
+        };
+        let found = physical
+            .serial
+            .as_deref()
+            .and_then(|serial| {
+                targets.iter().position(|candidate| {
+                    if transport == "ios" {
+                        candidate.id.eq_ignore_ascii_case(serial)
+                    } else {
+                        candidate.id == serial
+                    }
+                })
             })
-        })
-        .collect()
+            .map(|index| targets.remove(index));
+        let name = found
+            .as_ref()
+            .and_then(|device| device.model.as_ref())
+            .map_or_else(
+                || physical.name.clone(),
+                |model| {
+                    let model = model.replace('_', "-");
+                    if physical.name.eq_ignore_ascii_case("samsung_android") {
+                        format!("Samsung {model}")
+                    } else {
+                        physical.name.clone()
+                    }
+                },
+            );
+        let state = found
+            .as_ref()
+            .map_or_else(|| "usb_detected".into(), |device| device.state.clone());
+        let target = found.map(|device| device.id);
+        phones.push(Phone {
+            name,
+            transport,
+            usb_detected: true,
+            state,
+            target,
+        });
+    }
+    for (transport, targets) in [("android", android), ("ios", ios)] {
+        phones.extend(targets.into_iter().map(|device| {
+            Phone {
+                name: device
+                    .model
+                    .map(|model| model.replace('_', " "))
+                    .unwrap_or_else(|| {
+                        if transport == "ios" {
+                            "iPhone or iPad".into()
+                        } else {
+                            "Android phone".into()
+                        }
+                    }),
+                transport,
+                usb_detected: false,
+                state: device.state,
+                target: Some(device.id),
+            }
+        }));
+    }
+    phones
+}
+
+pub fn discover_phones() -> PhoneInventory {
+    let (android, ios) = std::thread::scope(|scope| {
+        let android = scope.spawn(|| detect_devices(Transport::Android));
+        let ios = detect_devices(Transport::Ios);
+        (
+            android
+                .join()
+                .unwrap_or_else(|_| Err(std::io::Error::other("Android inventory unavailable"))),
+            ios,
+        )
+    });
+    #[cfg(target_os = "macos")]
+    let usb = mac::usb();
+    #[cfg(not(target_os = "macos"))]
+    let usb: Result<Vec<UsbDevice>, String> = Ok(Vec::new());
+    let android_error = android.as_ref().err().map(ToString::to_string);
+    let ios_error = ios.as_ref().err().map(ToString::to_string);
+    let usb_error = usb.as_ref().err().cloned();
+    let phones = merge_phones(
+        usb.unwrap_or_default(),
+        android.unwrap_or_default(),
+        ios.unwrap_or_default(),
+    );
+    PhoneInventory {
+        phones,
+        android_error,
+        ios_error,
+        usb_error,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -326,7 +378,7 @@ mod mac {
         }
     }
 
-    fn usb() -> Result<Vec<UsbDevice>, String> {
+    pub(super) fn usb() -> Result<Vec<UsbDevice>, String> {
         let devices = plist(
             "/usr/sbin/ioreg",
             &["-a", "-r", "-c", "IOUSBHostDevice", "-d", "1"],
@@ -346,35 +398,66 @@ mod mac {
                 let vendor = text(row, "USB Vendor Name")
                     .unwrap_or("Unknown vendor")
                     .trim();
-                let lower = name.to_lowercase();
-                let platform = if ["iphone", "ipad", "ipod"]
-                    .iter()
-                    .any(|word| lower.contains(word))
-                    && integer(row, "idVendor") == Some(0x05ac)
-                {
-                    "iOS"
-                } else if [
-                    "android",
-                    "pixel",
-                    "galaxy",
-                    "fastboot",
-                    "adb interface",
-                    "mtp",
-                ]
-                .iter()
-                .any(|word| lower.contains(word))
-                {
-                    "Possible Android"
-                } else {
-                    "USB peripheral"
-                };
+                let platform = phone_platform(name, vendor, integer(row, "idVendor"));
                 Some(UsbDevice {
                     name: name.into(),
                     vendor: vendor.into(),
                     platform,
+                    serial: text(row, "USB Serial Number").map(str::to_owned),
                 })
             })
             .collect())
+    }
+
+    fn phone_platform(name: &str, vendor: &str, vendor_id: Option<u64>) -> &'static str {
+        let name = name.to_ascii_lowercase();
+        let vendor = vendor.to_ascii_lowercase();
+        if vendor_id == Some(0x05ac)
+            && ["iphone", "ipad", "ipod"]
+                .iter()
+                .any(|model| name.contains(model))
+        {
+            return "iOS";
+        }
+        let model_hints = [
+            "android",
+            "pixel",
+            "galaxy",
+            "redmi",
+            "poco",
+            "fastboot",
+            "adb interface",
+            "moto ",
+            "oneplus",
+            "oppo",
+            "realme",
+            "vivo",
+        ];
+        let mobile_vendor = matches!(vendor_id, Some(0x2717 | 0x22d9 | 0x2d95 | 0x22b8 | 0x2a70))
+            || ["xiaomi", "oneplus", "motorola", "oppo", "realme", "vivo"]
+                .iter()
+                .any(|maker| vendor.contains(maker));
+        if model_hints.iter().any(|hint| name.contains(hint)) || mobile_vendor {
+            return "Android";
+        }
+        "USB peripheral"
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn usb_inventory_recognizes_redmi_before_adb_authorization() {
+        assert_eq!(
+            phone_platform("Redmi Note 10", "Xiaomi", Some(0x2717)),
+            "Android"
+        );
+        assert_eq!(
+            phone_platform("Galaxy A", "Samsung", Some(0x04e8)),
+            "Android"
+        );
+        assert_eq!(
+            phone_platform("T2 Controller", "Apple", Some(0x05ac)),
+            "USB peripheral"
+        );
     }
 
     fn disk_info(id: &str, timeout: Duration) -> Result<Dictionary, String> {
@@ -398,5 +481,31 @@ mod mac {
     }
     fn integer(row: &Dictionary, key: &str) -> Option<u64> {
         row.get(key).and_then(Value::as_unsigned_integer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn usb_presence_and_adb_authorization_are_independent() {
+        let physical = || UsbDevice {
+            name: "Redmi Note 10".into(),
+            vendor: "Xiaomi".into(),
+            platform: "Android",
+            serial: Some("PHONE1".into()),
+        };
+        let raw = merge_phones(vec![physical()], Vec::new(), Vec::new());
+        assert_eq!(raw[0].state, "usb_detected");
+        assert!(raw[0].target.is_none());
+        let adb = DetectedDevice {
+            id: "PHONE1".into(),
+            state: "device".into(),
+            model: Some("Redmi".into()),
+        };
+        let ready = merge_phones(vec![physical()], vec![adb], Vec::new());
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].target.as_deref(), Some("PHONE1"));
     }
 }

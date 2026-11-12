@@ -102,3 +102,103 @@ fn collects_and_verifies_three_usb_transports_and_rejects_unauthorized_devices()
     }
     Ok(())
 }
+
+#[test]
+fn device_service_checks_recovery_identity_and_wireless_tls_inventory() -> io::Result<()> {
+    let root = tempfile::tempdir()?;
+    let bin = root.path();
+    helper(bin, "idevice_id", "test \"$1\" = -l; printf 'test-phone\n'")?;
+    helper(bin, "ideviceenterrecovery", "test \"$*\" = test-phone")?;
+    helper(
+        bin,
+        "irecovery",
+        r#"
+        case "$*" in
+            -q|"-i 0x0000000000001234 -q")
+                printf 'ECID: 0x0000000000001234\nMODE: Recovery\nPRODUCT: iPhone10,6\n'
+                ;;
+            "-i 0x0000000000001234 -n")
+                ;;
+            "-i 0x0000000000002345 -q")
+                printf 'ECID: 0x0000000000002345\nMODE: DFU\n'
+                ;;
+            *) exit 1 ;;
+        esac
+    "#,
+    )?;
+    helper(
+        bin,
+        "fastboot",
+        "test \"$*\" = 'devices -l'; printf 'DEVICE fastboot usb:1-1\n'",
+    )?;
+    helper(
+        bin,
+        "adb",
+        r#"
+        shift 4
+        case "$*" in
+            "mdns services")
+                printf 'Test._adb-tls-connect._tcp\t_adb-tls-connect._tcp.\t192.168.5.2:37099\n'
+                ;;
+            "devices -l")
+                printf 'List of devices attached\n192.168.5.2:37099 device model:Paired\n192.168.5.3:5555 device model:Legacy\nPHONE device usb:1-1 model:USB\n'
+                ;;
+            "connect 192.168.5.2:37099")
+                printf 'connected to 192.168.5.2:37099\n'
+                ;;
+            *) exit 1 ;;
+        esac
+    "#,
+    )?;
+    helper(
+        bin,
+        "scrcpy",
+        "test \"$*\" = '--serial PHONE --no-control --no-audio --window-title OmniRecovery Screen Mirror'",
+    )?;
+
+    let run = |args: &[&str]| cli(bin).args(args).output();
+    let recovery: Value = serde_json::from_slice(&run(&["ios-recovery-status"])?.stdout)?;
+    assert_eq!(recovery["mode"], "Recovery");
+    assert!(
+        run(&[
+            "ios-enter-recovery",
+            "test-phone",
+            "--confirm-id",
+            "test-phone"
+        ])?
+        .status
+        .success()
+    );
+    assert!(
+        run(&["ios-exit-recovery", "0x1234", "--confirm-id", "0x1234"])?
+            .status
+            .success()
+    );
+    assert!(
+        !run(&["ios-exit-recovery", "0x2345", "--confirm-id", "0x2345"])?
+            .status
+            .success()
+    );
+    assert!(
+        !run(&["ios-enter-recovery", "test-phone", "--confirm-id", "wrong"])?
+            .status
+            .success()
+    );
+    assert!(run(&["mirror-android", "PHONE"])?.status.success());
+    let fastboot: Value = serde_json::from_slice(&run(&["fastboot-devices"])?.stdout)?;
+    assert_eq!(fastboot[0]["id"], "DEVICE");
+    let wifi: Value = serde_json::from_slice(&run(&["devices", "android-wireless"])?.stdout)?;
+    assert_eq!(wifi.as_array().unwrap().len(), 1);
+    assert_eq!(wifi[0]["model"], "Paired");
+    assert!(
+        run(&["connect-android", "192.168.5.2:37099"])?
+            .status
+            .success()
+    );
+    assert!(
+        !run(&["connect-android", "192.168.5.3:5555"])?
+            .status
+            .success()
+    );
+    Ok(())
+}

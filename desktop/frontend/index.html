@@ -14,19 +14,22 @@
       <div class="brand"><img src="icon.png" width="42" height="42" alt=""><span>OmniRecovery</span></div>
       <nav aria-label="Workflows">
         <button class="nav-button active" data-view="toolbox" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span>Toolbox</button>
+        <button class="nav-button" data-view="my-devices"><span class="nav-icon" aria-hidden="true">▯</span>My devices</button>
+        <div id="phone-sidebar" class="phone-sidebar"></div>
         <button class="nav-button" data-view="devices"><span class="nav-icon" aria-hidden="true">▤</span>Devices &amp; storage</button>
         <button class="nav-button" data-view="scan"><span class="nav-icon" aria-hidden="true">⌕</span>Scan media</button>
         <button class="nav-button" data-view="capture"><span class="nav-icon" aria-hidden="true">⊞</span>Capture &amp; clone</button>
         <button class="nav-button" data-view="compare"><span class="nav-icon" aria-hidden="true">⇄</span>Compare captures</button>
         <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span>Repair files</button>
         <button class="nav-button" data-view="transfer"><span class="nav-icon" aria-hidden="true">↗</span>Phone clone</button>
+        <button class="nav-button" data-view="service"><span class="nav-icon" aria-hidden="true">⚙</span>Device service</button>
         <button class="nav-button" data-view="forensics"><span class="nav-icon" aria-hidden="true">◎</span>Forensics</button>
         <button class="nav-button" data-view="security"><span class="nav-icon" aria-hidden="true">◇</span>Security scan</button>
         <button class="nav-button" data-view="logs"><span class="nav-icon" aria-hidden="true">≡</span>Scan logs</button>
         <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span>Sanitize</button>
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span>Automation</button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.3</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.4</span></div>
     </aside>
 
     <main>
@@ -42,6 +45,7 @@
           <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
           <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Package selected files for a receiving Android phone.</span></button>
           <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Run evidence scans, verification, and phone-export review.</span></button>
+          <button class="tool-tile" data-jump="service"><span class="tile-icon">⚙</span><strong>Device service</strong><span>Check recovery modes and mirror an Android screen.</span></button>
           <button class="tool-tile" data-jump="repair"><span class="tile-icon">✚</span><strong>Repair files</strong><span>Assess supported photo, video, audio, and Office file damage.</span></button>
           <button class="tool-tile" data-jump="security"><span class="tile-icon">◇</span><strong>Security scan</strong><span>Check a local sample or review security log indicators.</span></button>
           <button class="tool-tile" data-jump="logs"><span class="tile-icon">≡</span><strong>Scan logs</strong><span>View, export, delete, or restore activity logs.</span></button>
@@ -51,10 +55,41 @@
         </div>
       </section>
 
+      <section id="my-devices" class="view" aria-labelledby="my-devices-title" hidden>
+        <header class="section-top"><div><h1 id="my-devices-title">My devices</h1><p id="phone-count" aria-live="polite">Detect phones to get started.</p></div><button data-action id="refresh-phones">Refresh devices</button></header>
+        <div class="phone-mode" role="group" aria-label="Connection method">
+          <button data-action id="phone-usb-mode" aria-pressed="true">USB</button>
+          <button data-action id="phone-wireless-mode" aria-pressed="false">Wireless</button>
+        </div>
+        <div class="phone-card-list" id="phone-card-list"></div>
+        <section class="card phone-connect" id="phone-usb-setup">
+          <h2>Connect a phone by USB</h2>
+          <div class="source-pair"><div><h3>Android</h3><p class="muted">Unlock the phone, turn on USB debugging in Developer options, and approve this computer on the phone.</p></div><div><h3>iPhone or iPad</h3><p class="muted">Unlock the device, connect it with a data cable, then tap Trust when prompted.</p></div></div>
+          <p class="muted" id="phone-usb-status" aria-live="polite"></p>
+        </section>
+        <section class="card phone-connect" id="phone-wireless-setup" hidden>
+          <h2>Pair Android over Wi-Fi</h2>
+          <p class="muted">Put both devices on the same Wi-Fi. On Android 11 or newer, open Developer options → Wireless debugging → Pair device with pairing code.</p>
+          <div class="source-pair">
+            <div><h3>Pair</h3><label>Pairing address and port<input id="wifi-pair-address" type="text" placeholder="192.168.1.25:37099" maxlength="25" autocomplete="off"></label>
+              <label>Six-digit code<input id="wifi-pair-code" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+              <div class="actions"><button data-action id="wifi-pair">Pair device</button></div></div>
+            <div><h3>Connect</h3><label>Connection address and port<input id="wifi-connect-address" type="text" placeholder="192.168.1.25:41673" maxlength="25" autocomplete="off"></label>
+              <p class="muted">Use the address on the main Wireless debugging screen. Its port differs from the pairing port.</p>
+              <div class="actions"><button class="primary" data-action id="wifi-connect">Connect device</button></div></div>
+          </div>
+          <p class="muted" id="phone-wireless-status" aria-live="polite"></p>
+        </section>
+        <section class="card phone-detail" id="phone-detail" hidden>
+          <div class="section-top"><div><h2 id="phone-name"></h2><p class="muted" id="phone-state"></p></div><button data-action id="phone-authorize">Connection setup</button></div>
+          <div class="phone-category-grid" id="phone-categories"></div>
+        </section>
+      </section>
+
       <section id="devices" class="view" aria-labelledby="devices-title" hidden>
         <header><h1 id="devices-title">Devices &amp; storage</h1><p>See connected devices and the locations available for read-only inspection.</p></header>
         <section class="card"><div class="section-top"><h2>Storage inventory</h2><button data-action id="refresh-devices">Refresh devices</button></div><p id="storage-inventory-note" class="muted" hidden></p><div id="device-metrics" class="metrics"></div><div id="disk-list" class="disk-list"></div></section>
-        <section class="card output-card"><div class="section-top"><h2>Connected USB devices</h2><button data-action id="check-adb">Check Android USB debugging</button></div><p class="muted">Unlock your Android phone, enable USB debugging and approve the fingerprint on its screen. This check starts the local ADB bridge and lists authorization status.</p><div id="adb-results" class="disk-list"></div><div id="usb-list" class="disk-list"></div><div class="actions device-actions"><button data-jump="scan" data-scan-source="android_export">Import Android export</button><button data-jump="scan" data-scan-source="ios_export">Import iOS export</button></div></section>
+        <section class="card output-card"><div class="section-top"><h2>Connected USB devices</h2><button class="jump-button" data-jump="my-devices">Open phone options</button></div><div id="usb-list" class="disk-list"></div></section>
       </section>
 
       <section id="scan" class="view" aria-labelledby="scan-title" hidden>
@@ -106,10 +141,10 @@
         <header><h1 id="capture-title">Capture &amp; clone</h1><p>Choose a source to enable the Before and After capture buttons.</p></header>
         <section class="card output-card">
           <h2>Acquire from a connected device</h2>
-          <p class="muted">Capture Android shared files, an iOS device backup, or files from a PTP camera into a new folder with a SHA-256 manifest.</p>
+          <p class="muted">Capture authorized Android shared files or device details, an iOS backup, or PTP camera files with a SHA-256 manifest.</p>
           <div class="field-row">
-            <label>USB transport<select id="acquisition-transport"><option value="android">Android (ADB)</option><option value="ios">iPhone or iPad</option><option value="camera">Camera (PTP)</option></select></label>
-            <label id="acquisition-scope-label">Android files<select id="acquisition-scope"><option value="shared">Shared storage</option><option value="camera">Camera folder</option><option value="downloads">Downloads</option><option value="documents">Documents</option><option value="pictures">Pictures</option><option value="music">Music</option><option value="movies">Movies</option></select></label>
+            <label>Transport<select id="acquisition-transport"><option value="android">Android (USB)</option><option value="android_wireless">Android (Wireless debugging)</option><option value="ios">iPhone or iPad</option><option value="camera">Camera (PTP)</option></select></label>
+            <label id="acquisition-scope-label">Android files<select id="acquisition-scope"><option value="shared">Shared storage</option><option value="camera">Camera folder</option><option value="downloads">Downloads</option><option value="documents">Documents</option><option value="pictures">Pictures</option><option value="music">Music</option><option value="movies">Movies</option><option value="device_info">Device info only</option></select></label>
             <label>Connected device<select id="acquisition-device"><option value="">Refresh to detect devices</option></select></label>
           </div>
           <div class="actions">
@@ -117,6 +152,11 @@
             <button class="primary" data-action id="start-acquisition">Choose destination and capture</button>
           </div>
           <p class="muted" id="acquisition-status">Install the platform's ADB, libimobiledevice, or gPhoto2 helper. Unlock the phone and approve its USB prompt when requested.</p>
+        </section>
+        <section class="card output-card">
+          <div class="section-top"><h2>Backup history</h2><button data-action id="choose-history">Choose backup folder</button></div>
+          <p class="muted" id="history-folder">Choose the parent folder where you saved your captures.</p>
+          <div class="disk-list" id="history-list"></div>
         </section>
         <section class="card"><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button class="primary" data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a folder or phone export to begin.</p>
           <div class="source-pair"><div><h2>Before capture</h2><p class="muted" id="before-capture-state">No capture saved.</p><button class="primary" data-action id="capture-before">Capture before</button></div><div><h2>After capture</h2><p class="muted" id="after-capture-state">No capture saved.</p><button data-action id="capture-after">Capture after</button></div></div>
@@ -149,6 +189,31 @@
           <div class="passwords"><label>Archive passphrase<input id="password" type="password" autocomplete="off" maxlength="128"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div><p class="muted">Use 12–128 printable ASCII characters.</p>
           <button class="primary" data-action id="start-transfer" disabled>Create encrypted archive</button></section>
         <section class="card output-card"><h2>Restore on the receiving phone</h2><p class="muted">Copy the .omnibackup archive to the phone. In the Android companion, select the archive and a destination folder, then enter the same passphrase.</p><p id="transfer-result" hidden></p></section>
+      </section>
+
+      <section id="service" class="view" aria-labelledby="service-title" hidden>
+        <header><h1 id="service-title">Device service</h1><p>Check the device and its current boot mode before making changes.</p></header>
+        <section class="card output-card">
+          <div class="section-top"><h2>Android bootloader</h2><button data-action id="detect-fastboot">Detect fastboot devices</button></div>
+          <p id="fastboot-state" class="muted">Connect a device in fastboot mode. This check uses Android SDK Platform-Tools.</p>
+        </section>
+        <section class="card output-card">
+          <h2>iOS Recovery Mode</h2>
+          <div class="actions">
+            <button data-action id="detect-normal-ios">Detect normal iOS devices</button>
+            <button data-action id="detect-ios-recovery">Read Recovery or DFU mode</button>
+          </div>
+          <p id="service-ios-state" class="muted">Connect one iPhone or iPad. This workflow uses libimobiledevice and libirecovery.</p>
+          <label>Target<select id="service-ios-device"><option value="">Detect a device to continue</option></select></label>
+          <div class="actions"><button data-action id="change-ios-recovery">Request recovery transition</button></div>
+          <p class="muted">A transition restarts the phone and interrupts active work. Save the current capture first.</p>
+        </section>
+        <section class="card output-card">
+          <div class="section-top"><h2>Android screen mirror</h2><button data-action id="detect-mirror">Detect authorized Android phones</button></div>
+          <p class="muted">Display an Android screen through scrcpy. The helper runs a temporary service on the phone. Use this for diagnostics after collection.</p>
+          <label>Android phone<select id="mirror-device"><option value="">Detect a phone to continue</option></select></label>
+          <div class="actions"><button class="primary" data-action id="start-mirror">Open display-only mirror</button></div>
+        </section>
       </section>
 
       <section id="forensics" class="view" aria-labelledby="forensics-title" hidden>

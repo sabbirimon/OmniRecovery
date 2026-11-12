@@ -16,6 +16,7 @@ use crate::{ExportInventory, inventory};
 #[serde(rename_all = "snake_case")]
 pub enum Transport {
     Android,
+    AndroidWireless,
     Ios,
     Camera,
 }
@@ -31,6 +32,7 @@ pub enum AndroidScope {
     Pictures,
     Music,
     Movies,
+    DeviceInfo,
 }
 
 impl AndroidScope {
@@ -43,6 +45,7 @@ impl AndroidScope {
             Self::Pictures => "/sdcard/Pictures",
             Self::Music => "/sdcard/Music",
             Self::Movies => "/sdcard/Movies",
+            Self::DeviceInfo => "device model and OS properties",
         }
     }
 }
@@ -98,7 +101,7 @@ pub(crate) fn find_helper(program: &str) -> io::Result<PathBuf> {
             .map(PathBuf::from),
         );
     }
-    if program == "adb" {
+    if matches!(program, "adb" | "fastboot") {
         for variable in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
             if let Some(path) = std::env::var_os(variable) {
                 directories.push(PathBuf::from(path).join("platform-tools"));
@@ -120,7 +123,7 @@ pub(crate) fn find_helper(program: &str) -> io::Result<PathBuf> {
         })
 }
 
-fn adapter_command(program: &str) -> io::Result<Command> {
+pub(crate) fn adapter_command(program: &str) -> io::Result<Command> {
     let mut command = Command::new(find_helper(program)?);
     command
         .env_remove("ADB_SERVER_SOCKET")
@@ -134,13 +137,37 @@ fn adapter_command(program: &str) -> io::Result<Command> {
     Ok(command)
 }
 
-fn run_adapter(command: &mut Command, timeout: Duration) -> io::Result<String> {
+pub(crate) fn run_adapter(command: &mut Command, timeout: Duration) -> io::Result<String> {
+    run_adapter_input(command, timeout, None)
+}
+
+pub(crate) fn run_adapter_input(
+    command: &mut Command,
+    timeout: Duration,
+    input: Option<&[u8]>,
+) -> io::Result<String> {
     let mut output = tempfile::tempfile()?;
     let mut child = command
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::from(output.try_clone()?))
         .stderr(Stdio::null())
         .spawn()?;
+    if let Some(input) = input {
+        let write_result = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("helper input unavailable"))
+            .and_then(|mut pipe| pipe.write_all(input));
+        if let Err(error) = write_result {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+    }
     let start = Instant::now();
     let result = loop {
         match child.try_wait() {
@@ -178,7 +205,7 @@ fn run_adapter(command: &mut Command, timeout: Duration) -> io::Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-fn usb_serial(id: &str) -> bool {
+pub(crate) fn usb_serial(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
         && id.as_bytes()[0].is_ascii_alphanumeric()
@@ -232,6 +259,7 @@ fn parse_devices(transport: Transport, output: &str) -> Vec<DetectedDevice> {
                         .map(str::to_owned),
                 })
             }
+            Transport::AndroidWireless => None,
             Transport::Ios => {
                 let id = line.trim();
                 usb_serial(id).then(|| DetectedDevice {
@@ -256,10 +284,11 @@ fn parse_devices(transport: Transport, output: &str) -> Vec<DetectedDevice> {
 pub fn detect_devices(transport: Transport) -> io::Result<Vec<DetectedDevice>> {
     let mut command = match transport {
         Transport::Android => {
-            let mut adb = adapter_command("adb")?;
-            adb.args(["-H", "127.0.0.1", "-P", "5037", "devices", "-l"]);
+            let mut adb = crate::android_wifi::adb_command()?;
+            adb.args(["devices", "-l"]);
             adb
         }
+        Transport::AndroidWireless => return crate::android_wifi::detect_wireless(),
         Transport::Ios => {
             let mut ios = adapter_command("idevice_id")?;
             ios.arg("-l");
@@ -277,9 +306,7 @@ pub fn detect_devices(transport: Transport) -> io::Result<Vec<DetectedDevice>> {
 
 pub(crate) fn stage(parent: &Path) -> io::Result<(TempDir, PathBuf)> {
     let parent = fs::canonicalize(parent)?;
-    let staging = Builder::new()
-        .prefix("OmniRecovery-acquisition-")
-        .tempdir_in(parent)?;
+    let staging = Builder::new().prefix(CAPTURE_PREFIX).tempdir_in(parent)?;
     let data = staging.path().join("data");
     fs::create_dir(&data)?;
     Ok((staging, data))
@@ -328,6 +355,39 @@ pub(crate) fn finish(
     Ok(report)
 }
 
+fn capture_android_info(id: &str, data: &Path) -> io::Result<()> {
+    let mut properties = std::collections::BTreeMap::new();
+    for (label, property) in [
+        ("manufacturer", "ro.product.manufacturer"),
+        ("model", "ro.product.model"),
+        ("device", "ro.product.device"),
+        ("android_version", "ro.build.version.release"),
+        ("sdk", "ro.build.version.sdk"),
+        ("security_patch", "ro.build.version.security_patch"),
+    ] {
+        let mut adb = crate::android_wifi::adb_command()?;
+        adb.args(["-s", id, "shell", "getprop", property]);
+        let value = run_adapter(&mut adb, Duration::from_secs(12))?;
+        let value = value.trim();
+        if value.len() > 256 || value.chars().any(char::is_control) {
+            return Err(invalid("device returned an invalid system property"));
+        }
+        if !value.is_empty() {
+            properties.insert(label, value.to_owned());
+        }
+    }
+    if !properties.contains_key("model") {
+        return Err(invalid("device model could not be read"));
+    }
+    let mut output = File::create_new(data.join("device-info.json"))?;
+    serde_json::to_writer_pretty(&mut output, &properties)?;
+    output.write_all(
+        b"
+",
+    )?;
+    output.sync_all()
+}
+
 /// Collect an authorized logical export into a unique local directory and verify its copied files.
 pub fn acquire_device(
     transport: Transport,
@@ -341,42 +401,43 @@ pub fn acquire_device(
         .collect();
     if matches.len() != 1 || !matches!(matches[0].state.as_str(), "device" | "attached") {
         return Err(invalid(
-            "select exactly one authorized device from the current USB inventory",
+            "select exactly one authorized device from the current transport inventory",
         ));
     }
     let started = now_ms();
     let (staging, data) = stage(output_parent)?;
-    let (mut command, acquisition, scope) = match transport {
-        Transport::Android => {
-            let mut adb = adapter_command("adb")?;
-            adb.args([
-                "-H",
-                "127.0.0.1",
-                "-P",
-                "5037",
-                "-s",
-                id,
-                "pull",
-                "-a",
-                android_scope.path(),
-            ])
-            .arg(&data);
-            (adb, "android_adb", android_scope.path())
+    let (acquisition, scope) = match transport {
+        Transport::Android | Transport::AndroidWireless => {
+            if matches!(android_scope, AndroidScope::DeviceInfo) {
+                capture_android_info(id, &data)?;
+            } else {
+                let mut adb = crate::android_wifi::adb_command()?;
+                adb.args(["-s", id, "pull", "-a", android_scope.path()])
+                    .arg(&data);
+                run_adapter(&mut adb, Duration::from_secs(8 * 60 * 60))?;
+            }
+            let kind = if transport == Transport::Android {
+                "android_adb_usb"
+            } else {
+                "android_adb_wireless"
+            };
+            (kind, android_scope.path())
         }
         Transport::Ios => {
             let mut ios = adapter_command("idevicebackup2")?;
             ios.args(["-u", id, "backup", "--full"]).arg(&data);
-            (ios, "ios_mobilebackup2", "device-provided logical backup")
+            run_adapter(&mut ios, Duration::from_secs(8 * 60 * 60))?;
+            ("ios_mobilebackup2", "device-provided logical backup")
         }
         Transport::Camera => {
             let mut camera = adapter_command("gphoto2")?;
             camera
                 .args(["--port", id, "--quiet", "--keep", "--get-all-files"])
                 .current_dir(&data);
-            (camera, "camera_ptp", "downloadable camera files")
+            run_adapter(&mut camera, Duration::from_secs(8 * 60 * 60))?;
+            ("camera_ptp", "downloadable camera files")
         }
     };
-    let _ = run_adapter(&mut command, Duration::from_secs(8 * 60 * 60))?;
     if transport == Transport::Ios {
         for marker in ["Info.plist", "Status.plist", "Manifest.plist"] {
             if !fs::symlink_metadata(data.join(id).join(marker))
@@ -530,6 +591,118 @@ pub fn acquire_disk(source: &Path, output_parent: &Path) -> io::Result<Acquisiti
     )
 }
 
+const CAPTURE_PREFIX: &str = "OmniRecovery-acquisition-";
+
+#[derive(Debug, Serialize)]
+pub struct CaptureHistoryEntry {
+    pub name: String,
+    pub acquisition: String,
+    pub completed_unix_ms: u64,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CaptureHistory {
+    pub entries: Vec<CaptureHistoryEntry>,
+    pub unreadable: usize,
+    pub limited: bool,
+}
+
+fn read_manifest(directory: &Path) -> io::Result<Vec<u8>> {
+    if !fs::symlink_metadata(directory)?.is_dir() {
+        return Err(invalid("acquisition must be a regular directory"));
+    }
+    let mut manifest = open_image(&directory.join("acquisition.json"))?;
+    let state = manifest.metadata()?;
+    let mut content = Vec::new();
+    (&mut manifest)
+        .take(64 * 1024 * 1024 + 1)
+        .read_to_end(&mut content)?;
+    if content.len() > 64 * 1024 * 1024 || !same_file_state(&state, &manifest.metadata()?) {
+        return Err(invalid(
+            "manifest exceeded size limit or changed while reading",
+        ));
+    }
+    Ok(content)
+}
+
+/// List completed acquisitions below a selected parent folder, without opening payload files.
+pub fn capture_history(parent: &Path) -> io::Result<CaptureHistory> {
+    #[derive(serde::Deserialize)]
+    struct Summary {
+        schema_version: u32,
+        acquisition: String,
+        completed_unix_ms: u64,
+        bytes: u64,
+    }
+
+    let mut report = CaptureHistory {
+        entries: Vec::new(),
+        unreadable: 0,
+        limited: false,
+    };
+    let mut remaining = 64 * 1024 * 1024;
+    for (index, item) in fs::read_dir(fs::canonicalize(parent)?)?.enumerate() {
+        if index == 1000 {
+            report.limited = true;
+            break;
+        }
+        let item = item?;
+        let name = item.file_name();
+        let Some(name) = name.to_str().filter(|name| is_capture_name(name)) else {
+            continue;
+        };
+        if !item.file_type()?.is_dir() {
+            continue;
+        }
+        let path = item.path().join("acquisition.json");
+        let length = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                report.unreadable += 1;
+                continue;
+            }
+        };
+        if length > remaining {
+            report.limited = true;
+            continue;
+        }
+        remaining -= length;
+        match read_manifest(&item.path())
+            .and_then(|bytes| Ok(serde_json::from_slice::<Summary>(&bytes)?))
+        {
+            Ok(summary) if summary.schema_version == 1 => {
+                report.entries.push(CaptureHistoryEntry {
+                    name: name.into(),
+                    acquisition: summary.acquisition,
+                    completed_unix_ms: summary.completed_unix_ms,
+                    bytes: summary.bytes,
+                })
+            }
+            _ => report.unreadable += 1,
+        }
+    }
+    report.entries.sort_unstable_by(|a, b| {
+        b.completed_unix_ms
+            .cmp(&a.completed_unix_ms)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(report)
+}
+
+fn is_capture_name(name: &str) -> bool {
+    name.strip_prefix(CAPTURE_PREFIX).is_some_and(usb_serial)
+}
+
+/// Verify a backup selected by name from a previously chosen capture folder.
+pub fn verify_capture_in_history(parent: &Path, name: &str) -> io::Result<ExportInventory> {
+    if !is_capture_name(name) {
+        return Err(invalid("select a capture name from this backup history"));
+    }
+    verify_acquisition(&parent.join(name))
+}
+
 /// Verify the recorded payload of a completed acquisition or derivative.
 pub fn verify_acquisition(directory: &Path) -> io::Result<ExportInventory> {
     #[derive(serde::Deserialize)]
@@ -546,17 +719,7 @@ pub fn verify_acquisition(directory: &Path) -> io::Result<ExportInventory> {
         length: u64,
         sha256: String,
     }
-    let mut manifest = open_image(&directory.join("acquisition.json"))?;
-    let state = manifest.metadata()?;
-    let mut content = Vec::new();
-    (&mut manifest)
-        .take(64 * 1024 * 1024 + 1)
-        .read_to_end(&mut content)?;
-    if content.len() > 64 * 1024 * 1024 || !same_file_state(&state, &manifest.metadata()?) {
-        return Err(invalid(
-            "manifest exceeded size limit or changed while reading",
-        ));
-    }
+    let content = read_manifest(directory)?;
     let expected: Manifest = serde_json::from_slice(&content)?;
     let actual = inventory(&directory.join("data"))?;
     if expected.schema_version != 1
@@ -601,6 +764,11 @@ mod tests {
         let report = acquire_image(&input, root.path())?;
         assert_eq!(report.bytes, 13);
         verify_acquisition(&report.output)?;
+        let history = capture_history(root.path())?;
+        assert_eq!(history.entries.len(), 1);
+        assert_eq!(history.entries[0].bytes, 13);
+        verify_capture_in_history(root.path(), &history.entries[0].name)?;
+        assert!(verify_capture_in_history(root.path(), "../capture").is_err());
         fs::write(report.output.join("data/capture.dd"), b"edited bytes!")?;
         assert!(verify_acquisition(&report.output).is_err());
         assert_eq!(fs::read(input)?, b"example bytes");

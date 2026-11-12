@@ -63,8 +63,8 @@ pub(super) async fn choose_volume(
 }
 
 #[tauri::command]
-pub(super) async fn check_adb() -> Result<Vec<devices::AdbDevice>, String> {
-    work(devices::adb_devices).await
+pub(super) async fn discover_phones() -> Result<devices::PhoneInventory, String> {
+    work(|| Ok(devices::discover_phones())).await
 }
 
 fn verify_mounted(state: &Shared, slot: Source, source: &Path) -> Result<(), String> {
@@ -532,4 +532,77 @@ pub(super) async fn capture_usb_device(
         })))
     })
     .await
+}
+
+#[tauri::command]
+pub(super) async fn backup_history(
+    state: State<'_, Shared>,
+) -> Result<omnirecovery::CaptureHistory, String> {
+    let parent = selected(&state, Source::BackupHistory)?;
+    work(move || omnirecovery::capture_history(&parent).map_err(error)).await
+}
+
+#[tauri::command]
+pub(super) async fn verify_history_item(
+    state: State<'_, Shared>,
+    name: String,
+) -> Result<usize, String> {
+    let parent = selected(&state, Source::BackupHistory)?;
+    work(move || {
+        Ok(omnirecovery::verify_capture_in_history(&parent, &name)
+            .map_err(error)?
+            .files
+            .len())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn fastboot_devices() -> Result<Vec<omnirecovery::DetectedDevice>, String> {
+    work(move || omnirecovery::android_fastboot_devices().map_err(error)).await
+}
+
+#[tauri::command]
+pub(super) async fn ios_recovery_device() -> Result<omnirecovery::IosRecoveryDevice, String> {
+    work(move || omnirecovery::ios_recovery_status().map_err(error)).await
+}
+
+#[tauri::command]
+pub(super) async fn change_ios_recovery(id: String, enter: bool) -> Result<(), String> {
+    work(move || {
+        if enter {
+            omnirecovery::ios_enter_recovery(&id)
+        } else {
+            omnirecovery::ios_exit_recovery(&id)
+        }
+        .map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn mirror_android(id: String) -> Result<(), String> {
+    work(move || {
+        let mut child = omnirecovery::start_android_mirror(&id).map_err(error)?;
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        if child.try_wait().map_err(error)?.is_some() {
+            return Err("The screen mirror helper closed before opening a session.".into());
+        }
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn pair_wireless_android(address: String, code: String) -> Result<(), String> {
+    let code = Zeroizing::new(code);
+    work(move || omnirecovery::pair_android_wifi(&address, &code).map_err(error)).await
+}
+
+#[tauri::command]
+pub(super) async fn connect_wireless_android(address: String) -> Result<(), String> {
+    work(move || omnirecovery::connect_android_wifi(&address).map_err(error)).await
 }

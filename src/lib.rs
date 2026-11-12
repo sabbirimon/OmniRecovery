@@ -1,10 +1,12 @@
 mod acquisition;
 mod ai;
+mod android_wifi;
 mod artifacts;
 mod backup;
 mod catalogue;
 mod cloud;
 mod custody;
+mod device_service;
 mod fat32;
 mod http;
 mod media;
@@ -32,7 +34,11 @@ pub use acquisition::{
     AcquisitionReport, AndroidScope, DetectedDevice, Transport, acquire_device, acquire_image,
     detect_devices, verify_acquisition,
 };
+pub use acquisition::{
+    CaptureHistory, CaptureHistoryEntry, capture_history, verify_capture_in_history,
+};
 pub use ai::{AiTriage, ai_triage};
+pub use android_wifi::{connect_android_wifi, pair_android_wifi};
 pub use artifacts::{ArtifactKind, ArtifactReport, inspect_artifact};
 pub use backup::{BackupReport, backup_files, backup_selected_files, restore_files};
 pub use catalogue::{
@@ -47,6 +53,10 @@ pub use custody::{
 };
 pub use custody::{
     CustodyAction, CustodyHead, append_custody, generate_custody_key, verify_custody,
+};
+pub use device_service::{
+    IosRecoveryDevice, android_fastboot_devices, ios_enter_recovery, ios_exit_recovery,
+    ios_recovery_status, start_android_mirror,
 };
 pub use fat32::{
     DeletedFatFile, FatExportReport, FatUndeleteReport, recover_fat32_deleted, scan_fat32_deleted,

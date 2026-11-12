@@ -15,3 +15,9 @@ Reviewed November 12, 2026. The installed Intel Mac app reports bundle version 9
 The top bar uses blue with a purple gradient by the wordmark. A persistent pale device panel shows connection state. The workspace uses white cards, colorful icons, and compact groups for routine, management, and advanced operations. Unavailable actions stay visible with reduced emphasis. The Backup/Restore dialog uses separate actions and scope choices. These layout patterns can be implemented with OmniRecovery’s own artwork and accessibility labels.
 
 The installed app is an x86-64 executable linked to Qt 5.15.2, Qt Quick/QML, Qt WebEngine, SQLite and multimedia libraries. The bundle has its own ICNS icon, a compiled Qt skin resource, translations, and Apple device transport, property-list and recovery-mode libraries. Live process inventory confirmed the main process and separate Qt WebEngine helper processes. Shipped binaries and resources establish the architecture at a component level. No device data was read for the review and no vendor code or artwork was imported.
+
+## Follow-up Mac bundle inspection
+
+The installed 3uTools 9.0.027 bundle includes a separate iTunesFlash executable and libraries named for iOS device communication, USB multiplexing, recovery and restore. The running host mapped property-list and SQLite libraries. Together with the visible Mac workflows, this points to separate stages for device recognition, backup inspection and flashing. The installed package provides compiled binaries. This inspection did not execute a flash, restore or erase against a device.
+
+The vendor's flash documentation exposes distinct choices for retaining user data, factory restore and anti-recovery flashing. OmniRecovery currently provides boot-mode detection, a device-bound firmware plan and separate signed approval checks. [3uTools flash modes](https://www.3u.com/tutorial/articles/9180/what-s-anti-recovery-flash-on-3utools)

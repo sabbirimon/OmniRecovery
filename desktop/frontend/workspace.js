@@ -22,6 +22,7 @@ let snapshots = null;
 let activeLog = null;
 let evidenceReportKind = null;
 let canCopy = false;
+let recoveryAction = null;
 
 window.syncWorkspaceControls = () => {
   el('start-catalogue').disabled ||= !selections.has(sourceSlot());
@@ -30,6 +31,8 @@ window.syncWorkspaceControls = () => {
   el('capture-after').disabled ||= !selections.has(captureSource());
   el('clone-image').disabled ||= !selections.has('capture_image');
   el('start-acquisition').disabled ||= !el('acquisition-device').value;
+  el('start-mirror').disabled ||= !el('mirror-device').value;
+  el('change-ios-recovery').disabled ||= !el('service-ios-device').value || !recoveryAction;
   el('compare-saved-captures').disabled ||= !snapshots?.before || !snapshots?.after;
   el('review-transfer-files').disabled ||= !selections.has('transfer');
   el('start-transfer').disabled ||= cloneList !== null && cloneSelection.size === 0;
@@ -41,7 +44,7 @@ window.syncWorkspaceControls = () => {
   el('make-sanitize-plan').disabled ||= !el('sanitize-disk').value;
   el('export-log').disabled ||= !activeLog;
   el('move-log').disabled ||= !activeLog;
-  for (const id of ['scan-source', 'capture-source-kind', 'log-view', 'sanitize-disk', 'acquisition-transport', 'acquisition-device', 'acquisition-scope']) el(id).disabled = busy;
+  for (const id of ['scan-source', 'capture-source-kind', 'log-view', 'sanitize-disk', 'acquisition-transport', 'acquisition-device', 'acquisition-scope', 'service-ios-device', 'mirror-device']) el(id).disabled = busy;
 };
 
 function resetCatalogue() {
@@ -205,19 +208,192 @@ function diskCard(disk) {
 }
 
 for (const id of ['refresh-devices', 'refresh-sanitize']) el(id).addEventListener('click', () => run('Reading connected devices…', updateDevices));
-el('check-adb').addEventListener('click', () => run('Checking the local Android USB bridge…', async () => {
-  const devices = await invoke('check_adb');
-  el('adb-results').replaceChildren(...devices.map(device => {
-    const row = text('div', '', 'device-row');
-    row.append(text('strong', device.model), text('span', words(device.state), 'muted'));
-    return row;
+let phoneMode = 'usb';
+let usbPhones = [];
+let wirelessPhones = [];
+let selectedPhone = null;
+let phonesLoaded = false;
+
+const livePhoneCategories = [
+  ['▣', 'Camera roll', 'camera'],
+  ['▧', 'Pictures', 'pictures'],
+  ['▷', 'Videos', 'movies'],
+  ['♫', 'Music', 'music'],
+  ['≡', 'Documents', 'documents'],
+  ['↓', 'Downloads', 'downloads'],
+  ['▤', 'Shared files', 'shared'],
+  ['◎', 'Device info', 'device_info'],
+];
+const exportPhoneCategories = [
+  ['◈', 'Messages', 'message'],
+  ['♧', 'Call history', 'call_history'],
+  ['♙', 'Contacts', 'contact'],
+  ['▦', 'Apps', 'archive'],
+  ['↗', 'WhatsApp', 'whatsapp'],
+  ['□', 'Calendar', 'document', '.ics'],
+];
+
+function phoneStatus(phone) {
+  if (phone.state === 'device') return phone.transport === 'android_wireless' ? 'Wireless debugging authorized' : 'USB debugging authorized';
+  if (phone.state === 'attached') return 'USB connected · device trust may be required';
+  if (phone.state === 'unauthorized') return 'Approve USB debugging on the phone';
+  if (phone.state === 'usb_detected') return phone.transport === 'ios' ? 'USB detected · confirm device trust' : 'USB detected · set up USB debugging';
+  if (phone.state === 'offline') return 'Device detected · offline';
+  return words(phone.state);
+}
+
+function readyPhone(phone) { return Boolean(phone.target && ['device', 'attached'].includes(phone.state)); }
+
+function capturePhoneCategory(phone, scope) {
+  const transport = el('acquisition-transport');
+  transport.value = phone.transport;
+  el('acquisition-device').replaceChildren(new Option(phone.name, phone.target));
+  el('acquisition-scope-label').hidden = phone.transport === 'ios';
+  el('acquisition-scope').value = scope;
+  el('acquisition-status').textContent = `${phone.name} selected. Choose a destination to capture.`;
+  showView('capture');
+}
+
+function phoneExportCategory(phone, category, query = '') {
+  el('scan-source').value = phone.transport === 'ios' ? 'ios_export' : 'android_export';
+  scanSourceChanged();
+  for (const box of el('catalogue-categories').querySelectorAll('input')) box.checked = !category || box.value === category;
+  el('catalogue-query').value = query;
+  showView('scan');
+}
+
+function phoneCategoryButton(symbol, title, detail, action) {
+  const button = text('button', '', 'phone-category');
+  button.dataset.action = '';
+  const icon = text('span', symbol, 'phone-category-icon');
+  icon.setAttribute('aria-hidden', 'true');
+  button.append(icon, text('strong', title), text('small', detail));
+  button.addEventListener('click', action);
+  return button;
+}
+
+function renderPhoneDetails(phone) {
+  el('phone-detail').hidden = !phone;
+  if (!phone) return;
+  el('phone-name').textContent = phone.name;
+  el('phone-state').textContent = phoneStatus(phone);
+  const actions = [];
+  if (readyPhone(phone) && phone.transport.startsWith('android')) {
+    for (const [symbol, title, scope] of livePhoneCategories) {
+      actions.push(phoneCategoryButton(symbol, title, 'Capture from phone', () => capturePhoneCategory(phone, scope)));
+    }
+    if (phone.transport === 'android') {
+      actions.push(phoneCategoryButton('▯', 'Screen mirror', 'Display only', () => {
+        el('mirror-device').replaceChildren(new Option(phone.name, phone.target));
+        showView('service');
+        controls();
+      }));
+    }
+  } else if (readyPhone(phone) && phone.transport === 'ios') {
+    actions.push(phoneCategoryButton('↓', 'iOS backup', 'Collect device backup', () => capturePhoneCategory(phone, 'shared')));
+  }
+  for (const [symbol, title, category, query] of exportPhoneCategories) {
+    actions.push(phoneCategoryButton(symbol, title, 'Open from an export', () => phoneExportCategory(phone, category, query)));
+  }
+  actions.push(phoneCategoryButton('▤', 'All exported files', 'Browse a saved folder', () => phoneExportCategory(phone, null)));
+  el('phone-categories').replaceChildren(...actions);
+}
+
+function phoneKey(phone) { return JSON.stringify([phone.transport, phone.target, phone.name]); }
+
+function renderPhones() {
+  const phones = phoneMode === 'usb' ? usbPhones : wirelessPhones;
+  if (selectedPhone && !phones.some(phone => phoneKey(phone) === selectedPhone)) selectedPhone = null;
+  if (!selectedPhone && phones.length === 1) selectedPhone = phoneKey(phones[0]);
+  const current = phones.find(phone => phoneKey(phone) === selectedPhone);
+  const mode = phoneMode === 'usb' ? 'USB' : 'wireless';
+  el('phone-count').textContent = `${number.format(phones.length)} ${mode} ${phones.length === 1 ? 'device' : 'devices'} detected`;
+  const add = text('button', '', 'phone-card phone-card-add');
+  add.dataset.action = '';
+  add.append(text('span', '+', 'phone-screen'), text('strong', 'Add device'), text('small', 'Connection setup'));
+  add.addEventListener('click', () => openPhoneSetup());
+  const select = phone => {
+    phoneMode = phone.transport === 'android_wireless' ? 'wireless' : 'usb';
+    selectedPhone = phoneKey(phone);
+    if (el('my-devices').hidden) showView('my-devices');
+    renderPhones();
+    controls();
+  };
+  el('phone-card-list').replaceChildren(add, ...phones.map(phone => {
+    const tile = text('button', '', 'phone-card');
+    tile.dataset.action = '';
+    tile.setAttribute('aria-pressed', String(current === phone));
+    const art = text('span', '', `phone-screen ${phone.transport === 'ios' ? 'ios' : ''}`);
+    art.setAttribute('aria-hidden', 'true');
+    tile.append(art, text('strong', phone.name), text('small', phoneStatus(phone)));
+    tile.addEventListener('click', () => select(phone));
+    return tile;
   }));
-  return devices.length ? 'ADB status updated. Approve the USB debugging prompt on the phone if shown.' : 'No USB Android device was reported by ADB.';
+  el('phone-sidebar').replaceChildren(...[...usbPhones, ...wirelessPhones].map(phone => {
+    const item = text('button', phone.name);
+    item.dataset.action = '';
+    if (phone === current && !el('my-devices').hidden) item.setAttribute('aria-current', 'true');
+    item.addEventListener('click', () => select(phone));
+    return item;
+  }));
+  el('phone-usb-mode').setAttribute('aria-pressed', String(phoneMode === 'usb'));
+  el('phone-wireless-mode').setAttribute('aria-pressed', String(phoneMode === 'wireless'));
+  el('phone-usb-setup').hidden = phoneMode !== 'usb' || Boolean(current && readyPhone(current));
+  el('phone-wireless-setup').hidden = phoneMode !== 'wireless';
+  renderPhoneDetails(current);
+}
+
+function openPhoneSetup() {
+  const panel = el(`phone-${phoneMode}-setup`);
+  panel.hidden = false;
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
+async function loadPhones() {
+  if (phoneMode === 'usb') {
+    const inventory = await invoke('discover_phones');
+    usbPhones = inventory.phones;
+    const notes = [inventory.android_error, inventory.usb_error];
+    if (usbPhones.some(phone => phone.transport === 'ios')) notes.push(inventory.ios_error);
+    el('phone-usb-status').textContent = notes.filter(Boolean).join(' ');
+    phonesLoaded = true;
+  } else {
+    const detected = await invoke('list_acquisition_devices', {transport: 'android_wireless'});
+    wirelessPhones = detected.map(phone => ({name: phone.model?.replaceAll('_', ' ') || 'Android phone', transport: 'android_wireless', state: phone.state, target: phone.id}));
+  }
+  renderPhones();
+  return '';
+}
+
+for (const mode of ['usb', 'wireless']) {
+  el(`phone-${mode}-mode`).addEventListener('click', () => {
+    phoneMode = mode;
+    selectedPhone = null;
+    renderPhones();
+    run('Checking connected phones…', loadPhones);
+  });
+}
+el('refresh-phones').addEventListener('click', () => run('Checking connected phones…', loadPhones));
+el('phone-authorize').addEventListener('click', openPhoneSetup);
+el('wifi-pair').addEventListener('click', () => run('Pairing with the Android phone…', async () => {
+  const address = el('wifi-pair-address').value.trim();
+  const code = el('wifi-pair-code').value;
+  el('wifi-pair-code').value = '';
+  await invoke('pair_wireless_android', {address, code});
+  el('phone-wireless-status').textContent = 'Paired. Use the connection address to connect, or refresh to see an automatically connected phone.';
+  return '';
 }));
+el('wifi-connect').addEventListener('click', () => run('Connecting to Android Wireless debugging…', async () => {
+  await invoke('connect_wireless_android', {address: el('wifi-connect-address').value.trim()});
+  await loadPhones();
+  el('phone-wireless-status').textContent = 'Wireless connection confirmed.';
+  return '';
+}));
+renderPhones();
 
 el('acquisition-transport').addEventListener('change', () => {
   el('acquisition-device').replaceChildren(new Option('Refresh to detect devices', ''));
-  el('acquisition-scope-label').hidden = el('acquisition-transport').value !== 'android';
+  el('acquisition-scope-label').hidden = !el('acquisition-transport').value.startsWith('android');
   el('acquisition-status').textContent = 'Detect connected devices for this transport.';
   window.syncWorkspaceControls();
 });
@@ -246,6 +422,95 @@ el('start-acquisition').addEventListener('click', () => run('Capturing and verif
   if (!result) return '';
   el('acquisition-status').textContent = `Saved ${number.format(result.files)} verified files · ${size(result.bytes)} · ${result.output}`;
   return 'USB capture saved with its SHA-256 manifest.';
+}));
+
+el('choose-history').addEventListener('click', () => run('Opening backup history…', async () => {
+  const selected = await invoke('pick_source', {slot: 'backup_history'});
+  if (!selected) return '';
+  const history = await invoke('backup_history');
+  el('history-folder').textContent = selected.name;
+  el('history-list').replaceChildren(...history.entries.map(entry => {
+    const row = text('div', '', 'device-row');
+    const detail = text('div', '', 'volume-label');
+    detail.append(text('strong', words(entry.acquisition)), text('span', `${new Date(entry.completed_unix_ms).toLocaleString()} · ${size(entry.bytes)} · ${entry.name}`, 'muted'));
+    const verify = text('button', 'Verify');
+    verify.dataset.action = '';
+    verify.addEventListener('click', () => run('Checking backup hashes…', async () => {
+      const count = await invoke('verify_history_item', {name: entry.name});
+      return `Verified ${number.format(count)} backup files.`;
+    }));
+    row.append(detail, verify);
+    return row;
+  }));
+  const notes = [];
+  if (!history.entries.length) notes.push('No completed captures in this folder.');
+  if (history.unreadable) notes.push(`${number.format(history.unreadable)} manifests could not be read.`);
+  if (history.limited) notes.push('The folder exceeded the history scan limit.');
+  if (notes.length) el('history-list').append(text('p', notes.join(' '), 'muted'));
+  return '';
+}));
+
+el('detect-fastboot').addEventListener('click', () => run('Checking Android fastboot…', async () => {
+  const targets = await invoke('fastboot_devices');
+  el('fastboot-state').textContent = targets.length ? targets.map(target => target.id).join(' · ') : 'No Android device reported fastboot mode.';
+  return '';
+}));
+function resetIosSelection() {
+  recoveryAction = null;
+  el('service-ios-device').replaceChildren(new Option('Choose a detected device', ''));
+  el('change-ios-recovery').textContent = 'Request recovery transition';
+}
+el('detect-normal-ios').addEventListener('click', () => run('Looking for normal iOS devices…', async () => {
+  resetIosSelection();
+  const devices = await invoke('list_acquisition_devices', {transport: 'ios'});
+  el('service-ios-device').append(...devices.map(device => new Option([device.model, device.id].filter(Boolean).join(' · '), device.id)));
+  el('service-ios-state').textContent = devices.length ? 'Normal USB device detected. Confirm trust on the phone before requesting a transition.' : 'No normal iOS USB device was reported.';
+  if (devices.length) {
+    recoveryAction = 'enter';
+    el('change-ios-recovery').textContent = 'Enter Recovery Mode';
+  }
+  return '';
+}));
+el('detect-ios-recovery').addEventListener('click', () => run('Reading iOS boot mode…', async () => {
+  resetIosSelection();
+  const device = await invoke('ios_recovery_device');
+  const details = [device.product || device.model, device.mode, device.ecid].filter(Boolean).join(' · ');
+  el('service-ios-state').textContent = details;
+  if (device.mode === 'Recovery') {
+    recoveryAction = 'exit';
+    el('service-ios-device').append(new Option(details, device.ecid));
+    el('change-ios-recovery').textContent = 'Exit Recovery Mode';
+  }
+  return '';
+}));
+el('service-ios-device').addEventListener('change', () => {
+  el('change-ios-recovery').disabled = busy || !recoveryAction || !el('service-ios-device').value;
+});
+el('change-ios-recovery').addEventListener('click', () => {
+  const id = el('service-ios-device').value;
+  const action = recoveryAction;
+  if (!id || !action || !window.confirm(`Request a restart for iOS target ${id}?`)) return;
+  run('Requesting iOS recovery transition…', async () => {
+    await invoke('change_ios_recovery', {id, enter: action === 'enter'});
+    resetIosSelection();
+    el('service-ios-state').textContent = 'Transition requested. Detect the device again to confirm its mode.';
+    return '';
+  });
+});
+el('detect-mirror').addEventListener('click', () => run('Checking Android USB authorization…', async () => {
+  const select = el('mirror-device');
+  select.replaceChildren(new Option('Choose an authorized Android phone', ''));
+  const devices = await invoke('list_acquisition_devices', {transport: 'android'});
+  const authorized = devices.filter(device => device.state === 'device');
+  select.append(...authorized.map(device => new Option([device.model, device.id].filter(Boolean).join(' · '), device.id)));
+  return authorized.length ? '' : 'No authorized Android phone was reported.';
+}));
+el('mirror-device').addEventListener('change', () => {
+  el('start-mirror').disabled = busy || !el('mirror-device').value;
+});
+el('start-mirror').addEventListener('click', () => run('Opening the display-only mirror…', async () => {
+  await invoke('mirror_android', {id: el('mirror-device').value});
+  return 'Screen mirror opened in a separate window.';
 }));
 
 function renderCapture() {
@@ -446,6 +711,13 @@ for (const [id, kind] of [['save-catalogue-report', 'catalogue'], ['save-securit
 
 document.addEventListener('view-changed', ({detail}) => {
   if (busy) return;
+  if (detail === 'my-devices') {
+    renderPhones();
+    if (!phonesLoaded && phoneMode === 'usb') run('Checking connected phones…', loadPhones);
+  } else {
+    el('phone-sidebar').querySelectorAll('[aria-current]').forEach(item => item.removeAttribute('aria-current'));
+    el('wifi-pair-code').value = '';
+  }
   if ((detail === 'devices' || detail === 'sanitize') && !deviceList) run('Reading connected devices…', updateDevices);
   if (detail === 'capture') run('Loading saved captures…', refreshCaptures);
   if (detail === 'logs') run('Loading scan logs…', refreshLogs);

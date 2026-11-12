@@ -1,6 +1,13 @@
 # OmniRecovery requests and progress
 
-The published MIT [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
+The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
+
+## 0.3.4 device workspace
+
+- **My devices** shows phone tiles and status, sidebar model shortcuts and per-device actions. On macOS it recognizes Samsung and Xiaomi/Redmi USB entries even before ADB authorization. Device capture rechecks the chosen target.
+- Android USB and Wireless debugging offer shared-file categories and device-info capture. Wireless pairing uses the phone's current six-digit code and an advertised local TLS service.
+- Backup history lists completed captures and verifies their contents. Device service offers Android fastboot detection, display-only mirroring, iOS Recovery/DFU detection and Recovery Mode entry/exit requests for the selected target.
+- Native messaging-app migration, iOS wireless pairing, full OS repair, firmware and wipe execution, complete device restore, lock bypass and credential extraction remain open. [Device workspace guide](acquisition-and-recovery.md#my-devices-and-android-wireless-debugging)
 
 ## 0.3.3 implementation and remaining work
 

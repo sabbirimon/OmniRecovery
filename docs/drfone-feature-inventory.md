@@ -58,3 +58,11 @@ The five screenshots show the Mac Toolbox, its hover details, and the iOS System
 | Screen Mirror, Phone Companion, Virtual Location | The Android companion restores selected file archives. Screen mirroring, GPS simulation, and wireless phone management remain open |
 | Password Manager for Wi-Fi, app, website and mail passwords, plus locked PDF handling | These credential and document workflows are outside the implemented recovery scope |
 | Screen Unlock, Apple ID or Activation Lock, MDM removal and Samsung FRP | OmniRecovery uses authorized platform access and existing device trust for acquisition. Account and device protection bypass workflows are outside the implemented scope |
+
+## Connected-device navigation and installed helpers
+
+The follow-up screens show **My Device** with an Add New Device tile and a selectable model, a nested category list, and separate USB and Wireless setup screens. The wireless reference describes a first USB trust step for iOS and a companion-app QR flow for Android. OmniRecovery 0.3.4 adds its own model tiles, category shortcuts, USB trust instructions and explicit Android Wireless debugging pairing. It uses the Android platform's pairing-code flow.
+
+The running Mac host and Recovery module both had Android and iOS connection assemblies, a connection hub, USB-debugging guidance, and iTunes, iCloud and device-backup adapters mapped. The installed bundle includes a local ADB helper, and module packages include fastboot and USB libraries. The visible framework headers establish a host-to-module interface. The observations identify components and their boundaries. Live paid recovery behavior and internal algorithms remain unverified.
+
+The official System Repair manual distinguishes standard repair, erase-based advanced repair and anti-recovery repair. It also lists iOS beta/version changes, 1110 and 4013 errors, iTunes repair, and Samsung or Xiaomi/Redmi/POCO workflows with Download, Recovery and Fastboot modes. These correspond to different device states, target checks and data-loss implications. [Dr.Fone system repair guide](https://drfone.wondershare.com/guide/ios-system-recovery.html)

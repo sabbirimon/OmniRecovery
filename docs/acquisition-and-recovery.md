@@ -46,3 +46,22 @@ On Linux, `clone-disk /dev/DEVICE /path/to/captures` requires a whole, already r
 Create individual signing seeds with `custody-keygen`. Protect the seeds and configure a separate JSON object mapping actor labels to their public key hex strings. Use an empty dedicated ledger directory. `custody-append` signs the case, action, artifact length and SHA-256, and previous event digest. Retain the returned head in a separate trusted location. `custody-verify` checks signatures, sequence and the retained head.
 
 `plan-action` creates a firmware or wipe plan that expires after 24 hours. Firmware plans require the image and an independently obtained vendor digest. Use `custody-append` to sign a request and a second identity's approval against the exact plan. `verify-approval` checks both signatures, the plan hash and the ledger checkpoint. Device-level execution and hardware-backed identity remain separate qualification work. [NIST media sanitization guidelines](https://csrc.nist.gov/pubs/sp/800/88/r2/final)
+
+## My devices and Android wireless debugging
+
+Open **My devices** to see detected phones before opening the storage dashboard. A Mac USB tile can appear before Android debugging or iOS trust is available. Select a tile to see the connection state and actions. An authorized Android target offers camera roll, pictures, video, music, documents, downloads, shared files and device-info capture. Message, call, contact, app archive, WhatsApp and calendar shortcuts open an existing export. An authorized iOS target offers a logical backup. Use **Backup history** in **Capture & clone** to list completed acquisition folders and recheck their manifests.
+
+On Android 11 or later, open **Developer options → Wireless debugging → Pair device with pairing code**. In OmniRecovery, choose **My devices → Wireless** and enter the pairing address and temporary code. Then use the different address and port on the main Wireless debugging screen to connect. The host needs recent Platform-Tools, local IPv4 connectivity and mDNS discovery of the phone's TLS service. An offline deployment can use the USB tab and its associated commands.
+
+```sh
+omnirecovery pair-android 192.168.1.25:37099
+omnirecovery connect-android 192.168.1.25:41673
+omnirecovery devices android-wireless
+omnirecovery acquire android-wireless DEVICE_ID /path/to/captures --android-scope device-info
+```
+
+[Android Wireless debugging](https://developer.android.com/tools/adb#connect-to-a-device-over-wi-fi)
+
+In **Device service**, inspect Android fastboot or iOS Recovery and DFU. The iOS workflow can request entry into Recovery Mode and normal boot from Recovery Mode on a confirmed target. DFU detection is available for diagnostics. Android **Screen mirror** uses the installed scrcpy helper in display-only mode and starts a temporary service on the phone. Use it after forensic collection if the original device state matters.
+
+[libirecovery command reference](https://github.com/libimobiledevice/libirecovery/blob/master/tools/irecovery.c) · [scrcpy control modes](https://github.com/Genymobile/scrcpy/blob/master/doc/control.md)
