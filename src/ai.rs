@@ -43,7 +43,7 @@ pub fn ai_triage(
         return Err(invalid("invalid AI model identifier"));
     }
     let messages = [
-        json!({"role": "system", "content": "Explain the supplied OmniRecovery scan metrics. Give at most three concise verification or review steps. Do not infer file contents or declare deleted data recovered. You have no tools."}),
+        json!({"role": "system", "content": "Explain the supplied OmniRecovery scan metrics. Use at most two short sentences to suggest verification or review steps. Do not infer file contents or declare deleted data recovered. You have no tools."}),
         json!({"role": "user", "content": aggregate(report).to_string()}),
     ];
     let (provider, response) = if let Some(url) = remote_url {
@@ -102,7 +102,7 @@ pub fn ai_triage(
             false,
             None,
             Some(&json!({
-                "model": model, "messages": messages, "stream": false, "think": false, "options": { "num_predict": 384 }
+                "model": model, "messages": messages, "stream": false, "think": false, "options": { "num_predict": 128 }
             })),
         )?;
         ("ollama_loopback", response)

@@ -95,7 +95,7 @@ pub(crate) fn curl_transfer(
     loop {
         match process.try_wait() {
             Ok(Some(status)) if status.success() => break,
-            Ok(Some(_)) => return Err(invalid("HTTPS provider request failed")),
+            Ok(Some(_)) => return Err(invalid("provider request failed or timed out")),
             Ok(None)
                 if started.elapsed() < Duration::from_secs(125)
                     && output.metadata().is_ok_and(|state| state.len() <= limit) =>
@@ -105,9 +105,7 @@ pub(crate) fn curl_transfer(
             _ => {
                 let _ = process.kill();
                 let _ = process.wait();
-                return Err(invalid(
-                    "HTTPS provider response exceeded a time or size limit",
-                ));
+                return Err(invalid("provider response exceeded a time or size limit"));
             }
         }
     }

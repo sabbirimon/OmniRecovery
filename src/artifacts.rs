@@ -267,10 +267,12 @@ mod tests {
         let database = Connection::open(&path).unwrap();
         database.execute_batch("CREATE TABLE sms(_id INTEGER, date INTEGER, address TEXT, type INTEGER, body TEXT);
             INSERT INTO sms VALUES(1,0,'example',1,'hello'),(2,1,'example',2,'reply');").unwrap();
+        drop(database);
         let report = inspect_artifact(&path, ArtifactKind::AndroidSms, 1)?;
         assert!(report.has_more);
         assert_eq!(report.records[0]["text"], "hello");
-        database
+        Connection::open(&path)
+            .unwrap()
             .execute_batch("DROP TABLE sms; CREATE VIEW sms AS SELECT 0;")
             .unwrap();
         assert!(inspect_artifact(&path, ArtifactKind::AndroidSms, 1).is_err());
