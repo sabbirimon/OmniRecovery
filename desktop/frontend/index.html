@@ -37,7 +37,7 @@
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span><span class="nav-label">Automation</span></button>
         <button class="nav-button" data-view="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.6</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.7</span></div>
     </aside>
 
     <main>
@@ -52,7 +52,7 @@
         <div class="tool-grid">
           <button class="tool-tile" data-jump="my-devices"><span class="tile-icon">▯</span><strong>My devices</strong><span>Choose a phone and its USB or wireless workflow.</span></button>
           <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
-          <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Package selected files for a receiving Android phone.</span></button>
+          <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Copy files between Android phones or save an encrypted archive.</span></button>
           <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Run evidence scans, verification, and phone-export review.</span></button>
           <button class="tool-tile" data-jump="service"><span class="tile-icon">⚙</span><strong>Device service</strong><span>Open dedicated Android and iPhone &amp; iPad service pages.</span></button>
           <button class="tool-tile" data-jump="mirror"><span class="tile-icon">▱</span><strong>Screen mirror</strong><span>Preview an Android screen or camera over USB or Wi-Fi.</span></button>
@@ -94,7 +94,24 @@
         <section class="card phone-detail" id="phone-detail" hidden>
           <div class="section-top"><div><h2 id="phone-name"></h2><p class="muted" id="phone-state"></p></div><button data-action id="phone-authorize">Connection setup</button></div>
           <div class="phone-category-grid" id="phone-categories"></div>
+          <dl class="storage-specs" id="phone-live-specs" hidden></dl>
+          <section class="phone-browse-results" id="phone-live-results" aria-labelledby="phone-live-title" hidden>
+            <div class="section-top"><div><h3 id="phone-live-title"></h3><p class="muted" id="phone-live-count" aria-live="polite"></p></div><label>Filter filenames<input id="phone-live-query" type="search" maxlength="256"></label></div>
+            <div class="table-wrap"><table><thead><tr><th>Shared file</th><th>Type</th><th>Export</th></tr></thead><tbody id="phone-live-rows"></tbody></table></div>
+            <div class="actions"><button data-action id="phone-live-prev">Previous</button><button data-action id="phone-live-next">Next</button></div>
+          </section>
+          <details class="phone-export-options"><summary>Review a saved export</summary><div class="phone-category-grid" id="phone-export-categories"></div></details>
         </section>
+        <dialog id="phone-connect-dialog" class="connection-dialog" aria-labelledby="phone-connect-title">
+          <h2 id="phone-connect-title">Authorize phone connection</h2>
+          <p class="muted" id="phone-connect-device"></p>
+          <ol id="phone-connect-steps"></ol>
+          <p class="muted" id="phone-connect-note" aria-live="polite"></p>
+          <form method="dialog" class="actions">
+            <button>Close</button>
+            <button type="button" data-action id="phone-connect-check" class="primary">Check connection</button>
+          </form>
+        </dialog>
       </section>
 
       <section id="devices" class="view storage-view" aria-labelledby="devices-title" hidden>
@@ -228,13 +245,56 @@
       </section>
 
       <section id="transfer" class="view" aria-labelledby="transfer-title" hidden>
-        <header><h1 id="transfer-title">Phone clone</h1><p>Choose readable files from a phone export and package them for Android restore.</p></header>
-        <details class="card output-card"><summary><strong>Set up the Android companion</strong></summary><p class="muted">Install the OmniRecovery Android companion from the project's APK release. On the receiving phone, open the app, select the encrypted archive and choose the destination folder.</p></details>
-        <section class="card"><div class="section-top"><div><h2>Source folder</h2><p id="transfer-name" class="selection">Choose a local phone export folder.</p></div><div class="actions"><button data-action id="pick-transfer">Choose folder</button><button data-action id="review-transfer-files">Review files</button></div></div>
-          <div id="transfer-selection" hidden><div class="section-top"><p class="muted" id="transfer-selection-summary"></p><button data-action id="toggle-transfer-selection">Select all</button></div><div class="table-wrap"><table><thead><tr><th>Copy</th><th>File</th><th>Category</th></tr></thead><tbody id="transfer-rows"></tbody></table></div></div>
-          <div class="passwords"><label>Archive passphrase<input id="password" type="password" autocomplete="off" maxlength="128"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div><p class="muted">Use 12–128 printable ASCII characters.</p>
-          <button class="primary" data-action id="start-transfer" disabled>Create encrypted archive</button></section>
-        <section class="card output-card"><h2>Restore on the receiving phone</h2><p class="muted">Copy the .omnibackup archive to the phone. In the Android companion, select the archive and a destination folder, then enter the same passphrase.</p><p id="transfer-result" hidden></p></section>
+        <header class="section-top">
+          <div><h1 id="transfer-title">Phone clone</h1><p>Copy selected files to another Android phone or save an encrypted archive.</p></div>
+          <button data-action id="refresh-transfer-phones">Refresh USB phones</button>
+        </header>
+        <p class="muted" id="transfer-phone-status" aria-live="polite">Connect your phones by USB and approve USB debugging.</p>
+        <div class="transfer-grid">
+          <section class="card transfer-device transfer-source" aria-labelledby="transfer-source-heading">
+            <h2 id="transfer-source-heading">Source</h2>
+            <label>Copy from<select id="transfer-source"><option value="">Choose a source</option><option value="export">Local export folder</option></select></label>
+            <div class="transfer-device-art" aria-hidden="true"><span class="transfer-phone-shape"></span></div>
+            <p class="muted" id="transfer-source-state">Choose a connected Android phone or a local export folder.</p>
+            <div id="transfer-export-source" hidden>
+              <p id="transfer-name" class="selection">Choose a local phone export folder.</p>
+              <div class="actions"><button data-action id="pick-transfer">Choose folder</button><button data-action id="review-transfer-files">Review files</button></div>
+            </div>
+          </section>
+          <section class="card transfer-contents" aria-labelledby="transfer-files-title">
+            <div class="section-top"><h2 id="transfer-files-title">Files to copy</h2><button data-action id="flip-transfer">⇄ Flip</button></div>
+            <fieldset id="transfer-folders" hidden>
+              <legend>Android shared folders</legend>
+              <label><input type="checkbox" value="camera"> Camera roll</label>
+              <label><input type="checkbox" value="pictures"> Pictures</label>
+              <label><input type="checkbox" value="videos"> Videos</label>
+              <label><input type="checkbox" value="music"> Music</label>
+              <label><input type="checkbox" value="documents"> Documents</label>
+              <label><input type="checkbox" value="downloads"> Downloads</label>
+            </fieldset>
+            <p id="transfer-selection-note" class="muted">Choose a source to see its file options.</p>
+          </section>
+          <section class="card transfer-device transfer-target" aria-labelledby="transfer-target-heading">
+            <h2 id="transfer-target-heading">Target</h2>
+            <label>Copy to<select id="transfer-target"><option value="">Choose a destination</option><option value="computer">Save archive to this computer</option></select></label>
+            <div class="transfer-device-art" aria-hidden="true"><span class="transfer-phone-shape"></span></div>
+            <p class="muted" id="transfer-target-state">Choose a different Android phone or save the archive for later.</p>
+          </section>
+        </div>
+        <section class="card output-card" id="transfer-selection" hidden>
+          <div class="section-top"><div><h2>Export file selection</h2><p class="muted" id="transfer-selection-summary"></p></div><button data-action id="toggle-transfer-selection">Select all</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Copy</th><th>File</th><th>Category</th></tr></thead><tbody id="transfer-rows"></tbody></table></div>
+        </section>
+        <section class="card output-card transfer-submit">
+          <h2>Encrypt and transfer</h2>
+          <div class="passwords"><label>Archive passphrase<input id="password" type="password" autocomplete="off" maxlength="128"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div>
+          <p class="muted">Use 12–128 printable ASCII characters. Enter the same passphrase in the Android companion to restore the files.</p>
+          <button class="primary" data-action id="start-transfer" disabled>Start transfer</button>
+        </section>
+        <section class="card output-card transfer-done" id="transfer-result-card" hidden aria-live="polite">
+          <h2 id="transfer-result-title">Transfer result</h2>
+          <p id="transfer-result"></p><p class="transfer-path" id="transfer-result-path"></p><p class="muted" id="transfer-result-next"></p>
+        </section>
       </section>
 
       <section id="service" class="view" aria-labelledby="service-title" hidden>

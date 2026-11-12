@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "omnirecovery"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "aes-gcm",
  "clap",

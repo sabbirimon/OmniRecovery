@@ -91,3 +91,13 @@ Open **Device service**, then choose **Android**, **iPhone & iPad**, or **Firmwa
 **Android service** shows authorized USB or Wi-Fi phones, device specifications, fastboot detection, capture, and a shortcut to Screen mirror. **iPhone & iPad service** shows normal USB devices, Recovery or DFU status, and available backup or Recovery Mode actions.
 
 ![OmniRecovery iPhone and iPad service page with a representative USB device](images/ios-service.png)
+
+## Browse or transfer from a connected phone
+
+Open **My devices**, select an Android phone, then choose a live category in the sidebar or on the device card. The matching files appear on the device page. Use the filename filter to narrow results and **Save copy** to export a selected file.
+
+![OmniRecovery live Android photo listing and per-file export controls](images/live-phone-browse.png)
+
+Choose **Phone clone** on the selected device card to open the transfer workspace with that phone as the source. Choose a second USB phone, select shared folders, and start the encrypted transfer. The Android companion on the receiving phone verifies and restores the archive from Downloads.
+
+![OmniRecovery source and target selectors with Android shared folder choices](images/live-phone-clone.png)

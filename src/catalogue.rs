@@ -174,7 +174,7 @@ fn include(
     }
 }
 
-fn classify(path: &str) -> FileCategory {
+pub(crate) fn classify(path: &str) -> FileCategory {
     use FileCategory::*;
     let path = path.to_ascii_lowercase();
     let name = path.rsplit('/').next().unwrap_or(&path);

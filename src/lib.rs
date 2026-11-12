@@ -12,6 +12,8 @@ mod fat32;
 mod http;
 mod media;
 mod partitions;
+mod phone_browse;
+mod phone_transfer;
 mod reconstruct;
 mod repair;
 mod snapshot;
@@ -66,6 +68,12 @@ pub use fat32::{
 };
 pub use media::MediaType;
 pub use partitions::{Partition, PartitionMap};
+pub use phone_browse::{
+    LivePhoneFile, LivePhoneFiles, PhoneCategory, browse_android_files, export_android_file,
+};
+pub use phone_transfer::{
+    PhoneBackupReport, PhoneDelivery, PhoneFolder, backup_android_folders, deliver_phone_archive,
+};
 pub use reconstruct::{ReconstructionReport, reconstruct_file};
 pub use repair::{
     RepairChange, RepairPreview, RepairReport, RepairResult, export_repair, preview_repair,

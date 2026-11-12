@@ -2,6 +2,12 @@
 
 The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
 
+## 0.3.7 device browsing and selective transfer
+
+- **My devices** opens live Android shared-file categories on the selected phone. It supports filename filtering and verified single-file export over USB and paired Wi-Fi. The connection dialog explains how to authorize the selected device.
+- **Phone clone** offers source and target selection, a flip control, and selective encrypted Android USB transfer or local archive save. The Android companion restores the delivered archive.
+- SMS, contacts, and call logs are reviewed from supported exports. See [forensic integration status](forensic-integrations.md) for upstream adapters.
+
 ## 0.3.6 storage, Android companion and forensic adapters
 
 - Storage filters, capacity charts and device specifications are available in the desktop workspace. Android screen, camera and audio preview uses a dedicated scrcpy window over an authorized USB or paired Wi-Fi connection.

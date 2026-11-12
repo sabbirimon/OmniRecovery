@@ -217,6 +217,36 @@ enum Command {
     },
     /// Recheck every data file against an acquisition manifest.
     VerifyAcquisition { directory: PathBuf },
+    /// List files from a live Android category without copying their contents.
+    BrowseAndroid {
+        id: String,
+        #[arg(long, value_enum, default_value = "android")]
+        transport: Transport,
+        #[arg(long, value_enum, default_value = "files")]
+        category: omnirecovery::PhoneCategory,
+    },
+    /// Copy a single shared Android file to a new local destination and verify it.
+    ExportAndroidFile {
+        id: String,
+        relative_path: String,
+        destination: PathBuf,
+        #[arg(long, value_enum, default_value = "android")]
+        transport: Transport,
+    },
+    /// Create an encrypted archive from selected shared folders on an authorized USB phone.
+    BackupAndroid {
+        id: String,
+        archive: PathBuf,
+        #[arg(long = "folder", required = true, value_enum)]
+        folders: Vec<omnirecovery::PhoneFolder>,
+    },
+    /// Deliver an encrypted OmniRecovery archive to an authorized Android USB phone.
+    SendPhoneArchive {
+        archive: PathBuf,
+        id: String,
+        #[arg(long)]
+        confirm_id: String,
+    },
     /// Restore a password-protected OmniRecovery file archive to a new directory.
     RestoreFiles {
         archive: PathBuf,
@@ -694,6 +724,48 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let report = omnirecovery::verify_acquisition(&directory)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
+        Command::BrowseAndroid {
+            id,
+            transport,
+            category,
+        } => {
+            let report = omnirecovery::browse_android_files(transport, &id, category)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::ExportAndroidFile {
+            id,
+            relative_path,
+            destination,
+            transport,
+        } => {
+            let report =
+                omnirecovery::export_android_file(transport, &id, &relative_path, &destination)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::BackupAndroid {
+            id,
+            archive,
+            folders,
+        } => {
+            let password = read_new_backup_password()?;
+            let report = omnirecovery::backup_android_folders(&id, &folders, &archive, &password)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::SendPhoneArchive {
+            archive,
+            id,
+            confirm_id,
+        } => {
+            if id != confirm_id {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "confirm the exact receiving phone ID",
+                )
+                .into());
+            }
+            let report = omnirecovery::deliver_phone_archive(&archive, &id)?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
         Command::RestoreFiles {
             archive,
             destination,
@@ -745,15 +817,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
         Command::BackupFiles { directory, archive } => {
-            let password = Zeroizing::new(rpassword::prompt_password("Backup passphrase: ")?);
-            let confirmation = Zeroizing::new(rpassword::prompt_password("Repeat passphrase: ")?);
-            if *password != *confirmation {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "passphrases do not match",
-                )
-                .into());
-            }
+            let password = read_new_backup_password()?;
             let report = omnirecovery::backup_files(&directory, &archive, &password)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
@@ -770,6 +834,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     writeln!(output)?;
     Ok(())
+}
+
+fn read_new_backup_password() -> io::Result<Zeroizing<String>> {
+    let password = Zeroizing::new(rpassword::prompt_password("Backup passphrase: ")?);
+    let confirmation = Zeroizing::new(rpassword::prompt_password("Repeat passphrase: ")?);
+    if *password != *confirmation {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "passphrases do not match",
+        ));
+    }
+    Ok(password)
 }
 
 fn main() -> ExitCode {

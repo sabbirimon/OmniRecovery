@@ -40,7 +40,21 @@ Android uses Android SDK Platform-Tools. Enable USB debugging on the phone and a
 
 In **Forensics → Review phone exports**, choose Android or iOS, select your export folder, and select categories such as SMS and messages, call history, contacts, mail, chat exports, WhatsApp, Messenger, or device info and IMEI files. These are filename and path hints. The catalogue lists and hashes selected files. It does not extract individual messages, read an IMEI directly from a phone, decrypt private app backups, or bypass phone permissions.
 
-For **Phone clone**, choose the local folder, click **Review files**, select the files and create a passphrase-protected `.omnibackup`. On the receiving Android device, select the archive and a destination in the companion app. The app verifies the archive before writing and checks each restored file. This copies the exported files, including supported account or browser-export records. The receiving apps handle account sign-in and importing their exported records. [Transfer format and setup](repair-and-transfer.md)
+### Browse a connected Android phone
+
+Open **My devices**, select the phone, and click **Photos**, **Videos**, **Music**, **Documents**, **Downloads**, or **Files**. Files appear on the same page. Use **Filter filenames** or choose **Save copy** on an individual result. The export compares the copy with a SHA-256 digest from the phone.
+
+If the connection needs authorization, open **Connection setup** and complete the device prompt. Shared-file browsing uses Android USB debugging or an already paired Wireless debugging connection. It lists standard shared folders and reports when the listing reaches its limit. For private records such as SMS, calls, contacts, and chat histories, use a readable export or supported backup.
+
+### Transfer selected phone files
+
+1. From the selected phone, choose **Phone clone**. You can also open it from the sidebar and select the source manually.
+2. Choose the target Android USB phone or **Save archive to this computer**. **Flip** swaps two selected USB phones.
+3. Select the shared folders to transfer. If the source is a local export, use **Review files** to select individual items.
+4. Enter an archive passphrase and start the transfer. For a connected target, OmniRecovery compares the transferred archive's SHA-256 with the desktop copy.
+5. In the Android companion on the target, select the archive from **Downloads** and choose **Verify and restore files**. The companion asks for the passphrase and output folder.
+
+The Android companion shipped in 0.3.6 reads the same archive format. [Transfer format and setup](repair-and-transfer.md)
 
 ## Verification, security and logs
 

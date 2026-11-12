@@ -39,7 +39,6 @@ function controls() {
   el('capture-kind').disabled = busy;
   el('start-scan').disabled ||= !selections.has('image');
   el('start-repair').disabled ||= !selections.has('damaged');
-  el('start-transfer').disabled ||= !selections.has('transfer');
   el('start-compare').disabled ||= !selections.has(captureSlot('before')) || !selections.has(captureSlot('after'));
   el('save-finding').disabled ||= activeFinding === null;
   el('save-repaired').disabled ||= repairReport?.status !== 'repair_available';
@@ -310,19 +309,6 @@ el('start-repair').addEventListener('click', () => run('Checking file structure 
   return 'Repair assessment finished.';
 }));
 
-pick('pick-transfer', 'transfer', 'transfer-name', () => { el('transfer-result').hidden = true; window.clearPhoneSelection?.(); });
-el('start-transfer').addEventListener('click', () => run('Choose where to save the archive…', async () => {
-  const password = el('password').value;
-  if (!/^[ -~]{12,128}$/.test(password)) throw Error('Enter a passphrase of 12–128 printable ASCII characters.');
-  if (password !== el('confirm-password').value) throw Error('The passphrases do not match.');
-  el('password').value = '';
-  el('confirm-password').value = '';
-  const result = await invoke('create_transfer', {password, selection: window.phoneSelection?.() ?? null});
-  if (!result) return;
-  el('transfer-result').textContent = `${number.format(result.files)} files packaged. Archive size ${size(result.archive_bytes)}.`;
-  el('transfer-result').hidden = false;
-  return 'Encrypted archive created.';
-}));
 
 controls();
 invoke('media_saving_available').then(available => {

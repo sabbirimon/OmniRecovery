@@ -607,3 +607,77 @@ input[type=checkbox] { min-height: auto; width: 15px; height: 15px; flex: none; 
 .capture-panel select, .mirror-form select { min-height: 34px; margin-top: 5px; }
 .capture-panel .actions { flex-wrap: wrap; }
 .setting-check { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+
+.transfer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, .85fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.transfer-grid h2 { margin: 0 0 12px; }
+.transfer-grid select { min-height: 34px; margin-top: 5px; }
+.transfer-grid p { overflow-wrap: anywhere; }
+.transfer-source { background: linear-gradient(155deg, #edf7ff, #fff 75%); }
+.transfer-target { background: linear-gradient(155deg, #ebf9f0, #fff 75%); }
+.transfer-device .actions { justify-content: flex-start; flex-wrap: wrap; }
+.transfer-device-art {
+  display: grid;
+  min-height: 126px;
+  place-items: center;
+  margin: 9px 0;
+}
+.transfer-phone-shape {
+  position: relative;
+  width: 63px;
+  height: 103px;
+  border: 5px solid #fff;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #bad9f8, #e4efff);
+  box-shadow: 0 3px 15px #32527f30, 0 0 0 1px #d0dfeb;
+}
+.transfer-phone-shape::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 3px;
+  border-radius: 6px;
+  top: 4px;
+  left: calc(50% - 7px);
+  background: #ffffffb8;
+}
+.transfer-device.transfer-connected .transfer-phone-shape {
+  background: linear-gradient(150deg, #177bdb, #7cd6ff);
+}
+.transfer-target.transfer-connected .transfer-phone-shape {
+  background: linear-gradient(150deg, #17816f, #8ce5b8);
+}
+.transfer-contents fieldset { margin: 0; border: 0; padding: 0; }
+.transfer-contents legend { padding: 0; margin-bottom: 6px; font-size: .83rem; font-weight: 650; }
+.transfer-contents fieldset label { display: flex; align-items: center; gap: 9px; padding: 7px 2px; }
+.transfer-contents .section-top { margin-bottom: 8px; }
+.transfer-contents .section-top h2 { margin: 0; }
+.transfer-submit .passwords { max-width: 720px; }
+.transfer-done { border-color: #a9d9c5; background: #f4fcf8; }
+.transfer-path { font-family: ui-monospace, monospace; font-size: .83rem; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .transfer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .transfer-contents { order: 1; grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .transfer-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.phone-detail .phone-category { white-space: normal; align-items: start; }
+.phone-detail .phone-category small { min-width: 0; overflow-wrap: anywhere; }
+.phone-browse-results { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.phone-browse-results .table-wrap { max-height: 460px; }
+.phone-browse-results td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.phone-browse-results .actions { margin-top: 10px; }
+.phone-export-options { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
+.phone-export-options .phone-category-grid { margin-top: 10px; }
+.phone-sidebar .phone-sidebar-category { display: flex; align-items: center; gap: 7px; margin-left: 9px; }
+.phone-sidebar-icon { width: 19px; height: 19px; flex: none; display: grid; place-items: center; border-radius: 5px; color: #0762ab; background: #dcefff; }
+.connection-dialog { width: min(510px, calc(100% - 36px)); padding: 24px; color: var(--ink); background: #fff; border: 1px solid #cfe0f3; border-radius: 16px; box-shadow: 0 20px 55px #1c335842; }
+.connection-dialog::backdrop { background: #142c4b68; }
+.connection-dialog ol { padding-left: 24px; }
+.connection-dialog li { margin-bottom: 8px; }
+.connection-dialog .actions { margin-top: 18px; }

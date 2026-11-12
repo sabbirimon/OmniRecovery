@@ -97,6 +97,12 @@ struct Catalogued {
     report: Catalogue,
 }
 
+struct PhoneBrowse {
+    transport: omnirecovery::Transport,
+    id: String,
+    report: Arc<omnirecovery::LivePhoneFiles>,
+}
+
 struct Workspace {
     paths: HashMap<Source, PathBuf>,
     reports: HashMap<ReportKind, Arc<Value>>,
@@ -105,6 +111,7 @@ struct Workspace {
     catalogues: HashMap<Source, Arc<Catalogued>>,
     disks: Vec<devices::Disk>,
     active_volume: Option<devices::Volume>,
+    phone_browse: Option<PhoneBrowse>,
     demo: tempfile::TempDir,
 }
 
@@ -314,36 +321,165 @@ async fn compare_sources(state: State<'_, Shared>, folders: bool) -> Result<Valu
 }
 
 #[tauri::command]
+async fn browse_phone(
+    state: State<'_, Shared>,
+    transport: omnirecovery::Transport,
+    id: String,
+    category: omnirecovery::PhoneCategory,
+) -> Result<Value, String> {
+    lock(&state)?.phone_browse = None;
+    let state = state.inner().clone();
+    work(move || {
+        let report =
+            Arc::new(omnirecovery::browse_android_files(transport, &id, category).map_err(error)?);
+        lock(&state)?.phone_browse = Some(PhoneBrowse {
+            transport,
+            id,
+            report: report.clone(),
+        });
+        serde_json::to_value(report.as_ref()).map_err(error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn save_phone_file(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    index: usize,
+) -> Result<Option<omnirecovery::ExportFile>, String> {
+    let (transport, id, path) = {
+        let workspace = lock(&state)?;
+        let browse = workspace
+            .phone_browse
+            .as_ref()
+            .ok_or("Browse the phone first.")?;
+        let entry = browse
+            .report
+            .entries
+            .get(index)
+            .ok_or("Select a file from the current results.")?;
+        (browse.transport, browse.id.clone(), entry.path.clone())
+    };
+    work(move || {
+        let name = path.rsplit('/').next().ok_or("Missing file name.")?;
+        let selected = app
+            .dialog()
+            .file()
+            .set_title("Save selected phone file")
+            .set_file_name(name)
+            .blocking_save_file();
+        let Some(destination) = picked(selected)? else {
+            return Ok(None);
+        };
+        omnirecovery::export_android_file(transport, &id, &path, &destination)
+            .map(Some)
+            .map_err(error)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum TransferSource {
+    Export {
+        selection: Option<Vec<usize>>,
+    },
+    Android {
+        id: String,
+        folders: Vec<omnirecovery::PhoneFolder>,
+    },
+}
+
+#[derive(Serialize)]
+struct TransferResult {
+    backup: omnirecovery::BackupReport,
+    unavailable_folders: Vec<&'static str>,
+    path: String,
+    delivery: Option<omnirecovery::PhoneDelivery>,
+}
+
+#[tauri::command]
 async fn create_transfer(
     app: AppHandle,
     state: State<'_, Shared>,
     password: String,
-    selection: Option<Vec<usize>>,
-) -> Result<Option<omnirecovery::BackupReport>, String> {
+    source: TransferSource,
+    target: Option<String>,
+) -> Result<Option<TransferResult>, String> {
     let password = Zeroizing::new(password);
-    let source = selected(&state, Source::Transfer)?;
-    let paths = selection
-        .map(|indices| workflows::selected_paths(&state, Source::Transfer, &indices))
-        .transpose()?;
+    if let TransferSource::Android { id, .. } = &source
+        && target.as_ref() == Some(id)
+    {
+        return Err("Choose different source and target phones.".into());
+    }
+    let export = match &source {
+        TransferSource::Export { selection } => {
+            let directory = selected(&state, Source::Transfer)?;
+            let paths = selection
+                .as_ref()
+                .map(|indices| workflows::selected_paths(&state, Source::Transfer, indices))
+                .transpose()?;
+            Some((directory, paths))
+        }
+        TransferSource::Android { .. } => None,
+    };
     work(move || {
-        let path = app
-            .dialog()
-            .file()
-            .set_title("Save encrypted phone-transfer archive")
-            .set_file_name("phone-transfer.omnibackup")
-            .add_filter("OmniRecovery archive", &["omnibackup"])
-            .blocking_save_file();
-        picked(path)?
-            .map(|path| {
-                match &paths {
-                    Some(paths) => {
-                        omnirecovery::backup_selected_files(&source, &path, &password, paths)
-                    }
-                    None => omnirecovery::backup_files(&source, &path, &password),
-                }
-                .map_err(error)
+        let temporary = target
+            .as_ref()
+            .map(|_| {
+                tempfile::Builder::new()
+                    .prefix("omnirecovery-transfer-")
+                    .tempdir()
             })
             .transpose()
+            .map_err(error)?;
+        let path = if let Some(temporary) = &temporary {
+            temporary.path().join("phone-transfer.omnibackup")
+        } else {
+            let path = app
+                .dialog()
+                .file()
+                .set_title("Save encrypted phone-transfer archive")
+                .set_file_name("phone-transfer.omnibackup")
+                .add_filter("OmniRecovery archive", &["omnibackup"])
+                .blocking_save_file();
+            let Some(path) = picked(path)? else {
+                return Ok(None);
+            };
+            path
+        };
+        let (backup, unavailable_folders) = match source {
+            TransferSource::Android { id, folders } => {
+                let result = omnirecovery::backup_android_folders(&id, &folders, &path, &password)
+                    .map_err(error)?;
+                (result.backup, result.unavailable_folders)
+            }
+            TransferSource::Export { .. } => {
+                let (directory, paths) = export.ok_or("Choose a source first.")?;
+                let backup = match paths {
+                    Some(paths) => {
+                        omnirecovery::backup_selected_files(&directory, &path, &password, &paths)
+                    }
+                    None => omnirecovery::backup_files(&directory, &path, &password),
+                }
+                .map_err(error)?;
+                (backup, Vec::new())
+            }
+        };
+        let delivery = target
+            .map(|id| omnirecovery::deliver_phone_archive(&path, &id))
+            .transpose()
+            .map_err(error)?;
+        let path = delivery
+            .as_ref()
+            .map_or_else(|| path.display().to_string(), |report| report.path.clone());
+        Ok(Some(TransferResult {
+            backup,
+            unavailable_folders,
+            path,
+            delivery,
+        }))
     })
     .await
 }
@@ -566,6 +702,7 @@ fn main() {
         catalogues: HashMap::new(),
         disks: Vec::new(),
         active_volume: None,
+        phone_browse: None,
         demo: tempfile::tempdir().expect("temporary directory unavailable"),
     };
     tauri::Builder::default()
@@ -586,6 +723,8 @@ fn main() {
             repair_file,
             compare_sources,
             create_transfer,
+            browse_phone,
+            save_phone_file,
             preview_media,
             inspect_bytes,
             media_saving_available,

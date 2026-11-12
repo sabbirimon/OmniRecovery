@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 use crate::source::{invalid, open_image, same_file_state};
 use crate::{catalogue_file, inventory, verify_file};
 
-const MAGIC: &[u8; 8] = b"OMNIBK01";
+pub(crate) const MAGIC: &[u8; 8] = b"OMNIBK01";
 const KDF_ROUNDS: u32 = 600_000;
 const BLOCK: usize = 1024 * 1024;
 const MAX_FILES: usize = 20_000;
@@ -42,12 +42,7 @@ pub fn backup_selected_files(
     make_backup(directory, archive, password, Some(paths))
 }
 
-fn make_backup(
-    directory: &Path,
-    archive: &Path,
-    password: &str,
-    paths: Option<&[String]>,
-) -> io::Result<BackupReport> {
+pub(crate) fn validate_password(password: &str) -> io::Result<()> {
     if !(12..=128).contains(&password.len())
         || !password.bytes().all(|b| (0x20..=0x7e).contains(&b))
     {
@@ -55,6 +50,16 @@ fn make_backup(
             "use a passphrase of 12–128 printable ASCII characters",
         ));
     }
+    Ok(())
+}
+
+fn make_backup(
+    directory: &Path,
+    archive: &Path,
+    password: &str,
+    paths: Option<&[String]>,
+) -> io::Result<BackupReport> {
+    validate_password(password)?;
     let file_name = archive
         .file_name()
         .ok_or_else(|| invalid("archive must have a file name"))?;

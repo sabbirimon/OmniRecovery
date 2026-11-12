@@ -281,3 +281,110 @@ fn external_parsers_receive_staged_sources_and_produce_verified_reports() -> io:
     assert!(report["files"]["files"]["tsk-deleted.txt"].is_object());
     Ok(())
 }
+
+#[test]
+fn browses_and_exports_selected_android_files_then_verifies_archive_delivery() -> io::Result<()> {
+    let root = tempfile::tempdir()?;
+    let export = root.path().join("export");
+    let target = root.path().join("receiving");
+    fs::create_dir(&export)?;
+    fs::create_dir(&target)?;
+    let photo = export.join("example.jpg");
+    fs::write(&photo, b"fixture photo bytes")?;
+    let archive = root.path().join("backup.omnibackup");
+    omnirecovery::backup_files(&export, &archive, "synthetic test passphrase")?;
+    let photo_hash = omnirecovery::verify_file(&photo)?.sha256;
+    let archive_hash = omnirecovery::verify_file(&archive)?.sha256;
+    helper(
+        root.path(),
+        "adb",
+        r#"
+        test "$1 $2 $3 $4" = "-H 127.0.0.1 -P 5037"
+        shift 4
+        if [ "$1" = devices ]; then
+            printf 'List of devices attached\nSOURCE device usb:3-1 model:Samsung\nTARGET device usb:3-2 model:Pixel\nLOCKED unauthorized usb:3-3\n'
+            exit
+        fi
+        test "$1" = "-s"
+        case "$2 $3" in
+          "SOURCE exec-out")
+            case "$4" in
+              *'head -c 262145')
+                printf "/sdcard/DCIM/O'Brien.jpg\000/sdcard/DCIM/clip.mp4\000/sdcard/DCIM/../private.jpg\000/sdcard/Android/data/private.jpg\000\000OK\000"
+                ;;
+              *'sha256sum'*)
+                case "$4" in *"O'\''Brien.jpg"*) ;; *) exit 1;; esac
+                printf '%s  photo\n' "$PHOTO_HASH"
+                ;;
+              *) exit 1 ;;
+            esac ;;
+          "SOURCE pull")
+            test "$4" = "/sdcard/DCIM/O'Brien.jpg"
+            /bin/cp "$PHOTO" "$5" ;;
+          "TARGET push")
+            case "$5" in /sdcard/Download/OmniRecovery-*/phone-transfer.part) ;; *) exit 1;; esac
+            /bin/cp "$4" "$TARGET_DIRECTORY/transfer/phone-transfer.part" ;;
+          "TARGET shell")
+            case "$4" in
+              mkdir) /bin/mkdir "$TARGET_DIRECTORY/transfer" ;;
+              sha256sum) printf '%s  transfer\n' "$DELIVERY_HASH" ;;
+              mv) /bin/mv "$TARGET_DIRECTORY/transfer/phone-transfer.part" "$TARGET_DIRECTORY/transfer/phone-transfer.omnibackup" ;;
+              rm) /bin/rm -f "$TARGET_DIRECTORY/transfer/phone-transfer.part" ;;
+              rmdir) /bin/rmdir "$TARGET_DIRECTORY/transfer" ;;
+              *) exit 1 ;;
+            esac ;;
+          *) exit 1 ;;
+        esac
+        "#,
+    )?;
+    let command = || {
+        let mut command = cli(root.path());
+        command
+            .env("PHOTO", &photo)
+            .env("PHOTO_HASH", &photo_hash)
+            .env("TARGET_DIRECTORY", &target)
+            .env("DELIVERY_HASH", &archive_hash);
+        command
+    };
+    let response = command()
+        .args(["browse-android", "SOURCE", "--category", "photos"])
+        .output()?;
+    assert!(response.status.success(), "{:?}", response);
+    let report: Value = serde_json::from_slice(&response.stdout)?;
+    assert_eq!(report["partial"], false);
+    assert_eq!(report["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(report["entries"][0]["path"], "DCIM/O'Brien.jpg");
+
+    let saved = root.path().join("saved.jpg");
+    let export = || {
+        let mut command = command();
+        command
+            .args(["export-android-file", "SOURCE", "DCIM/O'Brien.jpg"])
+            .arg(&saved);
+        command.output()
+    };
+    let response = export()?;
+    assert!(response.status.success(), "{:?}", response);
+    assert_eq!(fs::read(&saved)?, fs::read(&photo)?);
+    assert!(!export()?.status.success());
+
+    let delivery = |hash: &str| {
+        command()
+            .arg("send-phone-archive")
+            .arg(&archive)
+            .args(["TARGET", "--confirm-id", "TARGET"])
+            .env("DELIVERY_HASH", hash)
+            .output()
+    };
+    assert!(!delivery(&photo_hash)?.status.success());
+    assert!(!target.join("transfer").exists());
+    let response = delivery(&archive_hash)?;
+    assert!(response.status.success(), "{:?}", response);
+    let report: Value = serde_json::from_slice(&response.stdout)?;
+    assert_eq!(report["sha256"], archive_hash);
+    assert_eq!(
+        fs::read(target.join("transfer/phone-transfer.omnibackup"))?,
+        fs::read(archive)?
+    );
+    Ok(())
+}
