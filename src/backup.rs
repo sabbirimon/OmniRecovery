@@ -583,7 +583,7 @@ mod restore_tests {
         let destination = tmp.path().join("restored");
         fs::write(&source, b"transfer fixture")?;
         fs::create_dir(&destination)?;
-        assert!(backup_individual_files(&[source.clone()], &archive, "").is_err());
+        assert!(backup_individual_files(std::slice::from_ref(&source), &archive, "").is_err());
         let report =
             package_selected_computer_files(&[source], &archive, TransferProtection::Unencrypted)?;
         assert_eq!(report.format, "OMNIBK00");

@@ -692,7 +692,7 @@ impl MirrorSession {
 pub(super) async fn android_details(
     id: String,
     transport: omnirecovery::Transport,
-    startup: State<'_, Startup>,
+    startup: State<'_, tool_window::Startup>,
 ) -> Result<omnirecovery::AndroidDetails, String> {
     startup.check_phone(transport, &id)?;
     work(move || omnirecovery::inspect_android_details(transport, &id).map_err(error)).await
