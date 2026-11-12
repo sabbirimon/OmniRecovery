@@ -23,18 +23,19 @@
         <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span>Repair files</button>
         <button class="nav-button" data-view="transfer"><span class="nav-icon" aria-hidden="true">↗</span>Phone clone</button>
         <button class="nav-button" data-view="service"><span class="nav-icon" aria-hidden="true">⚙</span>Device service</button>
+        <button class="nav-button" data-view="records-review"><span class="nav-icon" aria-hidden="true">▤</span>Chats &amp; records</button>
         <button class="nav-button" data-view="forensics"><span class="nav-icon" aria-hidden="true">◎</span>Forensics</button>
         <button class="nav-button" data-view="security"><span class="nav-icon" aria-hidden="true">◇</span>Security scan</button>
         <button class="nav-button" data-view="logs"><span class="nav-icon" aria-hidden="true">≡</span>Scan logs</button>
         <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span>Sanitize</button>
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span>Automation</button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.4</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.5</span></div>
     </aside>
 
     <main>
       <section id="toolbox" class="view" aria-labelledby="toolbox-title">
-        <header><h1 id="toolbox-title">Toolbox</h1><p>Choose a source, capture its state, or review the files you can recover.</p></header>
+        <header><h1 id="toolbox-title">Toolbox</h1><p>Open a tool in its own window. Use the sidebar to navigate this window.</p></header>
         <div class="tool-grid featured">
           <button class="tool-tile mint" data-jump="scan"><span class="tile-icon">⌕</span><strong>Scan media</strong><span>Find files in an image, folder, or mounted drive.</span><span class="tile-arrow">→</span></button>
           <button class="tool-tile sky" data-jump="devices"><span class="tile-icon">▤</span><strong>Devices &amp; storage</strong><span>Inspect drives, mounted volumes, and USB devices.</span><span class="tile-arrow">→</span></button>
@@ -42,10 +43,12 @@
         </div>
         <h2 class="section-label">More tools</h2>
         <div class="tool-grid">
+          <button class="tool-tile" data-jump="my-devices"><span class="tile-icon">▯</span><strong>My devices</strong><span>Choose a phone and its USB or wireless workflow.</span></button>
           <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
           <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Package selected files for a receiving Android phone.</span></button>
           <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Run evidence scans, verification, and phone-export review.</span></button>
           <button class="tool-tile" data-jump="service"><span class="tile-icon">⚙</span><strong>Device service</strong><span>Check recovery modes and mirror an Android screen.</span></button>
+          <button class="tool-tile" data-jump="records-review"><span class="tile-icon">▤</span><strong>Chats &amp; records</strong><span>Review WhatsApp text exports and supported phone databases.</span></button>
           <button class="tool-tile" data-jump="repair"><span class="tile-icon">✚</span><strong>Repair files</strong><span>Assess supported photo, video, audio, and Office file damage.</span></button>
           <button class="tool-tile" data-jump="security"><span class="tile-icon">◇</span><strong>Security scan</strong><span>Check a local sample or review security log indicators.</span></button>
           <button class="tool-tile" data-jump="logs"><span class="tile-icon">≡</span><strong>Scan logs</strong><span>View, export, delete, or restore activity logs.</span></button>
@@ -184,6 +187,7 @@
 
       <section id="transfer" class="view" aria-labelledby="transfer-title" hidden>
         <header><h1 id="transfer-title">Phone clone</h1><p>Choose readable files from a phone export and package them for Android restore.</p></header>
+        <details class="card output-card"><summary><strong>Set up the Android companion</strong></summary><p class="muted">Install the OmniRecovery Android companion from the project's APK release. On the receiving phone, open the app, select the encrypted archive and choose the destination folder.</p></details>
         <section class="card"><div class="section-top"><div><h2>Source folder</h2><p id="transfer-name" class="selection">Choose a local phone export folder.</p></div><div class="actions"><button data-action id="pick-transfer">Choose folder</button><button data-action id="review-transfer-files">Review files</button></div></div>
           <div id="transfer-selection" hidden><div class="section-top"><p class="muted" id="transfer-selection-summary"></p><button data-action id="toggle-transfer-selection">Select all</button></div><div class="table-wrap"><table><thead><tr><th>Copy</th><th>File</th><th>Category</th></tr></thead><tbody id="transfer-rows"></tbody></table></div></div>
           <div class="passwords"><label>Archive passphrase<input id="password" type="password" autocomplete="off" maxlength="128"></label><label>Repeat passphrase<input id="confirm-password" type="password" autocomplete="off" maxlength="128"></label></div><p class="muted">Use 12–128 printable ASCII characters.</p>
@@ -213,6 +217,28 @@
           <p class="muted">Display an Android screen through scrcpy. The helper runs a temporary service on the phone. Use this for diagnostics after collection.</p>
           <label>Android phone<select id="mirror-device"><option value="">Detect a phone to continue</option></select></label>
           <div class="actions"><button class="primary" data-action id="start-mirror">Open display-only mirror</button></div>
+        </section>
+      </section>
+
+      <section id="records-review" class="view" aria-labelledby="records-review-title" hidden>
+        <header><h1 id="records-review-title">Chats &amp; records</h1><p>Read supported records from a saved phone export.</p></header>
+        <section class="card">
+          <div class="section-top"><label>Export type<select id="record-kind">
+            <option value="whatsapp_export">WhatsApp text export</option>
+            <option value="android_sms">Android SMS database</option>
+            <option value="android_calls">Android call database</option>
+            <option value="android_contact_names">Android contact names</option>
+            <option value="ios_sms">iOS message database</option>
+            <option value="ios_calls">iOS call database</option>
+            <option value="ios_contact_names">iOS contact names</option>
+            <option value="sqlite_schema">SQLite table inventory</option>
+          </select></label><button data-action id="pick-record-file">Choose export file</button></div>
+          <p class="muted" id="record-file-name">Choose a WhatsApp .txt export or a standalone SQLite database.</p>
+          <div class="actions"><button class="primary" data-action id="read-records">Read records</button><button class="jump-button" data-jump="transfer">Package exported chat files</button></div>
+        </section>
+        <section class="card output-card" id="record-results" hidden>
+          <h2>Records</h2><p class="muted" id="record-summary"></p>
+          <div class="record-table-scroll"><table id="record-table"></table></div>
         </section>
       </section>
 

@@ -526,3 +526,7 @@ input[type=checkbox] { min-height: auto; width: 15px; height: 15px; flex: none; 
 .phone-category:nth-child(3n + 2) .phone-category-icon { color: #206650; background: #e0f4ec; }
 .phone-category:nth-child(3n + 3) .phone-category-icon { color: #6243a3; background: #f0e9ff; }
 .phone-connect .source-pair label { margin-top: 7px; }
+
+.record-table-scroll { overflow: auto; }
+#record-table td { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 70px; max-width: 420px; }
+#record-summary { overflow-wrap: anywhere; }

@@ -94,6 +94,25 @@ pub fn preview_repair(path: &Path, expected_sha256: Option<&str>) -> io::Result<
     })
 }
 
+/// Save a validated repair derivative in a new file without modifying the source.
+pub fn export_repair(
+    path: &Path,
+    expected_sha256: Option<&str>,
+    destination: &Path,
+) -> io::Result<RepairReport> {
+    let preview = preview_repair(path, expected_sha256)?;
+    let bytes = preview
+        .repaired_bytes
+        .ok_or_else(|| invalid("no verified repair derivative is available"))?;
+    let result = preview
+        .report
+        .result
+        .as_ref()
+        .ok_or_else(|| invalid("verified repair metadata is unavailable"))?;
+    crate::write_verified_new(destination, &bytes, &result.sha256)?;
+    Ok(preview.report)
+}
+
 fn repair(input: &[u8], report: &mut RepairReport) -> Option<Vec<u8>> {
     let Some(media) = report.media_type else {
         return repair_office(input, report);

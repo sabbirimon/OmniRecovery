@@ -12,7 +12,7 @@ const MAX_DATABASE: u64 = 512 * 1024 * 1024;
 const MAX_CHAT: u64 = 8 * 1024 * 1024;
 const MAX_ROWS: usize = 1_000;
 
-#[derive(Clone, Copy, Debug, Serialize, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
     AndroidSms,

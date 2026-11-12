@@ -65,3 +65,23 @@ omnirecovery acquire android-wireless DEVICE_ID /path/to/captures --android-scop
 In **Device service**, inspect Android fastboot or iOS Recovery and DFU. The iOS workflow can request entry into Recovery Mode and normal boot from Recovery Mode on a confirmed target. DFU detection is available for diagnostics. Android **Screen mirror** uses the installed scrcpy helper in display-only mode and starts a temporary service on the phone. Use it after forensic collection if the original device state matters.
 
 [libirecovery command reference](https://github.com/libimobiledevice/libirecovery/blob/master/tools/irecovery.c) · [scrcpy control modes](https://github.com/Genymobile/scrcpy/blob/master/doc/control.md)
+
+## Recover and repair directly from the CLI
+
+The desktop phone list refreshes USB presence while **My devices → USB** is open. It retains the current target when the same device is still present.
+
+Use the source SHA-256 from the scan report and the selected finding's media type, offset, length and SHA-256 to write its validated bytes on a headless system.
+
+```sh
+omnirecovery recover IMAGE OUTPUT --media jpeg --offset OFFSET --length BYTES \
+  --source-sha256 IMAGE_SHA256 --expected-sha256 FINDING_SHA256
+omnirecovery repair DAMAGED_FILE --expected-sha256 ORIGINAL_SHA256 --output REPAIRED_FILE
+```
+
+The commands preserve the existing source and refuse an existing output path. An unresolved repair produces no derivative.
+
+## Separate tool windows
+
+Click a Toolbox card to open a dedicated desktop window. Scan, repair, record review, acquisition and other tools keep their current sources and results in their own processes. Saved activity and before/after captures remain available across windows.
+
+Open **Chats & records** for a local preview of exported WhatsApp messages or a supported SMS, call or contact database. Use **Phone clone** to package exported chat files and attachments for the Android companion's file restore. Native WhatsApp database merge and app-state restore remain separate work.

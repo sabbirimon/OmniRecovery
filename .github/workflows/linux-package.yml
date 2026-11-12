@@ -102,9 +102,21 @@ jobs:
           xvfb-run -a bash -euc '
             LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 omnirecovery-desktop > /tmp/omnirecovery-desktop.log 2>&1 &
             app=$!
-            trap "kill $app 2>/dev/null || true; cat /tmp/omnirecovery-desktop.log" EXIT
+            scan=""
+            repair=""
+            cleanup() {
+              kill "$app" "${scan:-$app}" "${repair:-$app}" 2>/dev/null || true
+              cat /tmp/omnirecovery-desktop.log
+            }
+            trap cleanup EXIT
             timeout 35s xdotool search --sync --onlyvisible --name "^OmniRecovery$"
-            kill -0 "$app"
+            LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 omnirecovery-desktop --tool-window scan >> /tmp/omnirecovery-desktop.log 2>&1 &
+            scan=$!
+            LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 omnirecovery-desktop --tool-window repair >> /tmp/omnirecovery-desktop.log 2>&1 &
+            repair=$!
+            timeout 35s xdotool search --sync --onlyvisible --name "Scan media$"
+            timeout 35s xdotool search --sync --onlyvisible --name "Repair files$"
+            kill -0 "$app" "$scan" "$repair"
           '
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

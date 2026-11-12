@@ -606,3 +606,12 @@ pub(super) async fn pair_wireless_android(address: String, code: String) -> Resu
 pub(super) async fn connect_wireless_android(address: String) -> Result<(), String> {
     work(move || omnirecovery::connect_android_wifi(&address).map_err(error)).await
 }
+
+#[tauri::command]
+pub(super) async fn inspect_export_records(
+    state: State<'_, Shared>,
+    kind: omnirecovery::ArtifactKind,
+) -> Result<omnirecovery::ArtifactReport, String> {
+    let source = selected(&state, Source::Artifact)?;
+    work(move || omnirecovery::inspect_artifact(&source, kind, 100).map_err(error)).await
+}

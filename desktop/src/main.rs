@@ -4,6 +4,7 @@ mod destination;
 mod devices;
 mod records;
 mod security;
+mod tool_window;
 mod workflows;
 
 use std::collections::HashMap;
@@ -39,6 +40,7 @@ enum Source {
     CaptureImage,
     BackupHistory,
     Evidence,
+    Artifact,
     Security,
 }
 
@@ -554,6 +556,7 @@ async fn save_report(
 }
 
 fn main() {
+    let startup = tool_window::startup();
     let workspace = Workspace {
         paths: HashMap::new(),
         reports: HashMap::new(),
@@ -565,9 +568,16 @@ fn main() {
         demo: tempfile::tempdir().expect("temporary directory unavailable"),
     };
     tauri::Builder::default()
+        .manage(startup)
+        .setup(move |app| {
+            tool_window::set_title(app, startup)?;
+            Ok(())
+        })
         .manage(Arc::new(Mutex::new(workspace)))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            tool_window::tool_startup,
+            tool_window::open_tool_window,
             pick_source,
             demo_image,
             scan_image,
@@ -597,6 +607,7 @@ fn main() {
             workflows::capture_status,
             workflows::compare_saved,
             workflows::clone_image,
+            workflows::inspect_export_records,
             workflows::verify_evidence,
             workflows::scan_evidence,
             workflows::clone_evidence,

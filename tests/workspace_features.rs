@@ -141,3 +141,57 @@ fn agent_stdio_searches_and_rejects_outside_paths() {
     assert_eq!(rows[0]["report"]["entries"][0]["path"], "record.log");
     assert_eq!(rows[1]["ok"], false);
 }
+
+#[test]
+fn cli_recovers_and_repairs_without_replacing_outputs() {
+    let dir = tempdir().unwrap();
+    let image = dir.path().join("source.dd");
+    let destination = dir.path().join("recovered.png");
+    let fixture = include_bytes!("../desktop/assets/demo.png");
+    fs::write(&image, fixture).unwrap();
+    let report = omnirecovery::scan(&image).unwrap();
+    let finding = &report.findings[0];
+    let recover = |expected: &str| {
+        Command::new(env!("CARGO_BIN_EXE_omnirecovery"))
+            .arg("recover")
+            .arg(&image)
+            .arg(&destination)
+            .args([
+                "--media",
+                "png",
+                "--offset",
+                &finding.offset.to_string(),
+                "--length",
+                &finding.length.to_string(),
+                "--source-sha256",
+                &report.source_sha256,
+                "--expected-sha256",
+                expected,
+            ])
+            .output()
+            .unwrap()
+    };
+    assert!(!recover(&"0".repeat(64)).status.success());
+    assert!(!destination.exists());
+    assert!(recover(&finding.sha256).status.success());
+    assert_eq!(fs::read(&destination).unwrap(), fixture);
+    assert!(!recover(&finding.sha256).status.success());
+
+    let damaged = dir.path().join("damaged.png");
+    let repaired = dir.path().join("repaired.png");
+    fs::write(&damaged, &fixture[..fixture.len() - 12]).unwrap();
+    let repair = || {
+        Command::new(env!("CARGO_BIN_EXE_omnirecovery"))
+            .arg("repair")
+            .arg(&damaged)
+            .args(["--expected-sha256", &finding.sha256])
+            .arg("--output")
+            .arg(&repaired)
+            .output()
+            .unwrap()
+    };
+    assert!(repair().status.success());
+    assert_eq!(fs::read(&repaired).unwrap(), fixture);
+    assert!(!repair().status.success());
+    assert_eq!(fs::read(&damaged).unwrap(), &fixture[..fixture.len() - 12]);
+}

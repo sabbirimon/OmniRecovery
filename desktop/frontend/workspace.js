@@ -26,6 +26,8 @@ let recoveryAction = null;
 
 window.syncWorkspaceControls = () => {
   el('start-catalogue').disabled ||= !selections.has(sourceSlot());
+  el('read-records').disabled ||= !selections.has('artifact');
+  el('record-kind').disabled = busy;
   el('recover-catalogue-item').disabled ||= !catalogueItem;
   el('capture-before').disabled ||= !selections.has(captureSource());
   el('capture-after').disabled ||= !selections.has(captureSource());
@@ -71,8 +73,17 @@ function scanSourceChanged() {
 }
 
 for (const tile of document.querySelectorAll('[data-jump]')) {
+  const separate = Boolean(tile.closest('#toolbox') && tile.classList.contains('tool-tile'));
+  if (separate) tile.title = 'Open in a separate window';
   tile.addEventListener('click', () => {
     if (busy) return;
+    if (separate) {
+      run('Opening tool window…', () => invoke('open_tool_window', {
+        view: tile.dataset.jump,
+        scanSource: tile.dataset.scanSource || null
+      }));
+      return;
+    }
     if (tile.dataset.scanSource) {
       el('scan-source').value = tile.dataset.scanSource;
       scanSourceChanged();
@@ -213,6 +224,7 @@ let usbPhones = [];
 let wirelessPhones = [];
 let selectedPhone = null;
 let phonesLoaded = false;
+let phoneRefreshInFlight = false;
 
 const livePhoneCategories = [
   ['▣', 'Camera roll', 'camera'],
@@ -349,14 +361,19 @@ function openPhoneSetup() {
   panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 }
 
+function applyUsbInventory(inventory) {
+  const changed = JSON.stringify(usbPhones) !== JSON.stringify(inventory.phones);
+  usbPhones = inventory.phones;
+  const notes = [inventory.android_error, inventory.usb_error];
+  if (usbPhones.some(phone => phone.transport === 'ios')) notes.push(inventory.ios_error);
+  el('phone-usb-status').textContent = notes.filter(Boolean).join(' ');
+  phonesLoaded = true;
+  return changed;
+}
+
 async function loadPhones() {
   if (phoneMode === 'usb') {
-    const inventory = await invoke('discover_phones');
-    usbPhones = inventory.phones;
-    const notes = [inventory.android_error, inventory.usb_error];
-    if (usbPhones.some(phone => phone.transport === 'ios')) notes.push(inventory.ios_error);
-    el('phone-usb-status').textContent = notes.filter(Boolean).join(' ');
-    phonesLoaded = true;
+    applyUsbInventory(await invoke('discover_phones'));
   } else {
     const detected = await invoke('list_acquisition_devices', {transport: 'android_wireless'});
     wirelessPhones = detected.map(phone => ({name: phone.model?.replaceAll('_', ' ') || 'Android phone', transport: 'android_wireless', state: phone.state, target: phone.id}));
@@ -364,6 +381,19 @@ async function loadPhones() {
   renderPhones();
   return '';
 }
+
+setInterval(async () => {
+  if (busy || phoneRefreshInFlight || phoneMode !== 'usb' || el('my-devices').hidden || !phonesLoaded) return;
+  phoneRefreshInFlight = true;
+  try {
+    const inventory = await invoke('discover_phones');
+    if (!busy && phoneMode === 'usb' && !el('my-devices').hidden && applyUsbInventory(inventory)) renderPhones();
+  } catch {
+    // The manual refresh button can show transport errors without interrupting other work.
+  } finally {
+    phoneRefreshInFlight = false;
+  }
+}, 5000);
 
 for (const mode of ['usb', 'wireless']) {
   el(`phone-${mode}-mode`).addEventListener('click', () => {
@@ -511,6 +541,28 @@ el('mirror-device').addEventListener('change', () => {
 el('start-mirror').addEventListener('click', () => run('Opening the display-only mirror…', async () => {
   await invoke('mirror_android', {id: el('mirror-device').value});
   return 'Screen mirror opened in a separate window.';
+}));
+
+pick('pick-record-file', 'artifact', 'record-file-name', () => { el('record-results').hidden = true; });
+el('record-kind').addEventListener('change', () => { el('record-results').hidden = true; });
+el('read-records').addEventListener('click', () => run('Reading the selected export…', async () => {
+  el('record-results').hidden = true;
+  const report = await invoke('inspect_export_records', {kind: el('record-kind').value});
+  const fields = Object.keys(report.records[0] || {});
+  const head = document.createElement('thead');
+  const row = document.createElement('tr');
+  row.append(...fields.map(field => text('th', words(field))));
+  head.append(row);
+  const body = document.createElement('tbody');
+  body.append(...report.records.map(record => {
+    const row = document.createElement('tr');
+    row.append(...fields.map(field => text('td', record[field] == null ? '' : String(record[field]))));
+    return row;
+  }));
+  el('record-table').replaceChildren(head, body);
+  el('record-summary').textContent = `${number.format(report.records.length)} records${report.has_more ? ' · preview limited' : ''} · SHA-256 ${report.source_sha256}`;
+  el('record-results').hidden = false;
+  return '';
 }));
 
 function renderCapture() {
@@ -729,3 +781,12 @@ invoke('media_saving_available').then(available => {
   el('clone-image').hidden = !available || captureSource() !== 'capture_image';
 }).catch(() => {});
 controls();
+
+invoke('tool_startup').then(tool => {
+  if (!tool) return;
+  if (tool.scan_source) {
+    el('scan-source').value = tool.scan_source;
+    scanSourceChanged();
+  }
+  showView(tool.view);
+}).catch(error => status(typeof error === 'string' ? error : error.message, 'error'));

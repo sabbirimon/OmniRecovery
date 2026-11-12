@@ -64,7 +64,9 @@ pub use fat32::{
 pub use media::MediaType;
 pub use partitions::{Partition, PartitionMap};
 pub use reconstruct::{ReconstructionReport, reconstruct_file};
-pub use repair::{RepairChange, RepairPreview, RepairReport, RepairResult, preview_repair};
+pub use repair::{
+    RepairChange, RepairPreview, RepairReport, RepairResult, export_repair, preview_repair,
+};
 pub use snapshot::{
     ExportComparison, ExportFile, ExportInventory, PathObservation, compare_exports, inventory,
 };
@@ -537,19 +539,38 @@ pub fn recover_candidate(
     source_sha256: &str,
     finding: &Finding,
 ) -> io::Result<Vec<u8>> {
-    if finding.length == 0 || finding.length > finding.media_type.max_bytes() as u64 {
+    let (verified, bytes) = validate_recovery(
+        image,
+        source_sha256,
+        finding.media_type,
+        finding.offset,
+        finding.length,
+    )?;
+    if verified != *finding {
+        return Err(invalid("candidate does not match the findings report"));
+    }
+    Ok(bytes)
+}
+
+fn validate_recovery(
+    image: &Path,
+    source_sha256: &str,
+    media_type: MediaType,
+    offset: u64,
+    length: u64,
+) -> io::Result<(Finding, Vec<u8>)> {
+    if length == 0 || length > media_type.max_bytes() as u64 {
         return Err(invalid("candidate size is outside recovery limits"));
     }
-    let end = finding
-        .offset
-        .checked_add(finding.length)
+    let end = offset
+        .checked_add(length)
         .ok_or_else(|| invalid("candidate offset overflow"))?;
     let mut file = open_image(image)?;
     let state = file.metadata()?;
     let layout = Layout::read(&mut file, state.len())?;
-    let ranges = layout.physical_ranges(finding.offset, end)?;
+    let ranges = layout.physical_ranges(offset, end)?;
     let mut ranges = ranges.into_iter().peekable();
-    let mut bytes = Vec::with_capacity(finding.length as usize);
+    let mut bytes = Vec::with_capacity(length as usize);
     // The candidate and the digest come from the same full-source read.
     let digest = hash_image_with(&mut file, state.len(), |offset, observed| {
         let end = offset + observed.len() as u64;
@@ -566,20 +587,74 @@ pub fn recover_candidate(
     if digest != source_sha256 {
         return Err(invalid("source SHA-256 does not match the findings report"));
     }
-    let candidate = finding
-        .media_type
+    let candidate = media_type
         .validate(bytes.as_slice())
         .map_err(|error| match error {
             Rejection::Io(error) => error,
             _ => invalid("candidate failed independent validation"),
         })?;
-    if bytes.len() as u64 != finding.length
-        || Finding::from_validated(finding.media_type, finding.offset, &candidate) != *finding
-    {
-        return Err(invalid("candidate does not match the findings report"));
+    if bytes.len() as u64 != length || candidate.bytes.len() as u64 != length {
+        return Err(invalid(
+            "candidate does not match the findings report length",
+        ));
     }
     if !same_file_state(&state, &file.metadata()?) {
         return Err(invalid("source image changed during recovery"));
     }
-    Ok(candidate.bytes)
+    Ok((
+        Finding::from_validated(media_type, offset, &candidate),
+        candidate.bytes,
+    ))
+}
+
+/// Recover one scan finding into a new file and verify it against both recorded digests.
+pub fn export_recovery(
+    image: &Path,
+    source_sha256: &str,
+    media_type: MediaType,
+    offset: u64,
+    length: u64,
+    expected_sha256: &str,
+    destination: &Path,
+) -> io::Result<Finding> {
+    if [source_sha256, expected_sha256]
+        .into_iter()
+        .any(|digest| digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err(invalid("use SHA-256 digests from the scan report"));
+    }
+    let (finding, bytes) = validate_recovery(
+        image,
+        &source_sha256.to_ascii_lowercase(),
+        media_type,
+        offset,
+        length,
+    )?;
+    if !finding.sha256.eq_ignore_ascii_case(expected_sha256) {
+        return Err(invalid(
+            "recovered content does not match the findings report digest",
+        ));
+    }
+    write_verified_new(destination, &bytes, &finding.sha256)?;
+    Ok(finding)
+}
+
+pub(crate) fn write_verified_new(destination: &Path, bytes: &[u8], sha256: &str) -> io::Result<()> {
+    use std::io::Write;
+
+    let parent = destination
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    temp.write_all(bytes)?;
+    temp.as_file().sync_all()?;
+    if source::hash_image(temp.as_file_mut(), bytes.len() as u64)? != sha256 {
+        return Err(invalid(
+            "saved file did not match the verified content digest",
+        ));
+    }
+    temp.persist_noclobber(destination)
+        .map_err(|error| error.error)?;
+    Ok(())
 }

@@ -2,7 +2,13 @@
 
 The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
 
-## 0.3.4 device workspace
+## 0.3.5 recovery and desktop workspace
+
+- Toolbox cards open independent tool windows for scan, repair, phone capture, record review and other operations. Current selections and running jobs belong to each window. Saved records remain available across windows.
+- The USB dashboard refreshes while open. The CLI can save verified scan findings and repair derivatives directly without replacing an existing destination.
+- **Chats & records** previews supported exported SMS, call and contact databases and WhatsApp text. Native chat migration and full app-state restore remain open.
+
+## [0.3.4](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.4) device workspace
 
 - **My devices** shows phone tiles and status, sidebar model shortcuts and per-device actions. On macOS it recognizes Samsung and Xiaomi/Redmi USB entries even before ADB authorization. Device capture rechecks the chosen target.
 - Android USB and Wireless debugging offer shared-file categories and device-info capture. Wireless pairing uses the phone's current six-digit code and an advertised local TLS service.

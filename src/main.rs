@@ -18,6 +18,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Export a scanned finding using its original offset, length and recorded SHA-256 values.
+    Recover {
+        image: PathBuf,
+        destination: PathBuf,
+        #[arg(long, value_enum)]
+        media: MediaType,
+        #[arg(long)]
+        offset: u64,
+        #[arg(long)]
+        length: u64,
+        #[arg(long)]
+        source_sha256: String,
+        #[arg(long)]
+        expected_sha256: String,
+    },
     /// Pair an Android device using its displayed local Wireless debugging code.
     PairAndroid { address: String },
     /// Connect to the device's advertised Wireless debugging address.
@@ -195,6 +210,9 @@ enum Command {
         /// Original SHA-256 from a trusted backup or manifest.
         #[arg(long)]
         expected_sha256: Option<String>,
+        /// Save a validated derivative into a new file.
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
     /// Create an encrypted phone-transfer archive from a directory of existing files.
     BackupFiles {
@@ -328,6 +346,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let mut output = io::stdout().lock();
     match command {
+        Command::Recover {
+            image,
+            destination,
+            media,
+            offset,
+            length,
+            source_sha256,
+            expected_sha256,
+        } => {
+            let finding = omnirecovery::export_recovery(
+                &image,
+                &source_sha256,
+                media,
+                offset,
+                length,
+                &expected_sha256,
+                &destination,
+            )?;
+            serde_json::to_writer_pretty(&mut output, &finding)?;
+        }
         Command::PairAndroid { address } => {
             let code = Zeroizing::new(rpassword::prompt_password("Android pairing code: ")?);
             omnirecovery::pair_android_wifi(&address, &code)?;
@@ -611,9 +649,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Repair {
             file,
             expected_sha256,
+            output: destination,
         } => {
-            let preview = omnirecovery::preview_repair(&file, expected_sha256.as_deref())?;
-            serde_json::to_writer_pretty(&mut output, &preview.report)?;
+            let report = if let Some(destination) = destination {
+                omnirecovery::export_repair(&file, expected_sha256.as_deref(), &destination)?
+            } else {
+                omnirecovery::preview_repair(&file, expected_sha256.as_deref())?.report
+            };
+            serde_json::to_writer_pretty(&mut output, &report)?;
         }
         Command::BackupFiles { directory, archive } => {
             let password = Zeroizing::new(rpassword::prompt_password("Backup passphrase: ")?);
