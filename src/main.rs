@@ -18,6 +18,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    // Split the derived CLI builder into smaller stack frames while keeping flat command names.
+    #[command(flatten)]
+    Evidence(EvidenceCommand),
+    #[command(flatten)]
+    Device(DeviceCommand),
+    #[command(flatten)]
+    File(FileCommand),
+}
+
+#[derive(Subcommand)]
+enum EvidenceCommand {
     /// Run an installed ALEAPP or iLEAPP parser against a verified export copy.
     AnalyzeLeapp {
         #[arg(value_enum)]
@@ -56,46 +67,6 @@ enum Command {
         source_sha256: String,
         #[arg(long)]
         expected_sha256: String,
-    },
-    /// Pair an Android device using its displayed local Wireless debugging code.
-    PairAndroid { address: String },
-    /// Connect to the device's advertised Wireless debugging address.
-    ConnectAndroid { address: String },
-    /// List completed captures in a selected backup folder.
-    BackupHistory { directory: PathBuf },
-    /// Detect iOS recovery or DFU mode without changing the device.
-    IosRecoveryStatus,
-    /// Request Recovery Mode on an explicitly selected trusted iOS device.
-    IosEnterRecovery {
-        id: String,
-        #[arg(long)]
-        confirm_id: String,
-    },
-    /// Request normal boot for an explicitly selected iOS Recovery Mode target.
-    IosExitRecovery {
-        ecid: String,
-        #[arg(long)]
-        confirm_id: String,
-    },
-    /// List connected Android fastboot USB targets.
-    FastbootDevices,
-    /// Open a display-only local Android screen mirror.
-    MirrorAndroid {
-        id: String,
-        #[arg(long, value_enum, default_value = "android")]
-        transport: Transport,
-        #[arg(long, value_enum, default_value = "balanced")]
-        profile: omnirecovery::MirrorProfile,
-        #[arg(long, value_enum, default_value = "screen")]
-        video: omnirecovery::MirrorVideo,
-        #[arg(long, value_enum, default_value = "off")]
-        audio: omnirecovery::MirrorAudio,
-    },
-    /// Inspect reported Android specs and shared storage.
-    AndroidDetails {
-        id: String,
-        #[arg(long, value_enum, default_value = "android")]
-        transport: Transport,
     },
     /// Create an expiring, device-bound firmware or sanitization review plan.
     PlanAction {
@@ -176,23 +147,49 @@ enum Command {
         #[arg(long)]
         expected_head: String,
     },
-    /// List deleted FAT32 short entries whose contiguous cluster spans are free.
-    UndeleteFat32 {
-        image: PathBuf,
-        #[arg(long, default_value_t = 0)]
-        volume_offset: u64,
+}
+
+#[derive(Subcommand)]
+enum DeviceCommand {
+    /// Pair an Android device using its displayed local Wireless debugging code.
+    PairAndroid { address: String },
+    /// Connect to the device's advertised Wireless debugging address.
+    ConnectAndroid { address: String },
+    /// List completed captures in a selected backup folder.
+    BackupHistory { directory: PathBuf },
+    /// Detect iOS recovery or DFU mode without changing the device.
+    IosRecoveryStatus,
+    /// Request Recovery Mode on an explicitly selected trusted iOS device.
+    IosEnterRecovery {
+        id: String,
+        #[arg(long)]
+        confirm_id: String,
     },
-    /// Export one candidate from the exact FAT32 image examined earlier.
-    RecoverFat32 {
-        image: PathBuf,
-        entry_offset: u64,
-        destination: PathBuf,
-        #[arg(long, default_value_t = 0)]
-        volume_offset: u64,
+    /// Request normal boot for an explicitly selected iOS Recovery Mode target.
+    IosExitRecovery {
+        ecid: String,
         #[arg(long)]
-        source_sha256: String,
-        #[arg(long)]
-        expected_sha256: Option<String>,
+        confirm_id: String,
+    },
+    /// List connected Android fastboot USB targets.
+    FastbootDevices,
+    /// Open a display-only local Android screen mirror.
+    MirrorAndroid {
+        id: String,
+        #[arg(long, value_enum, default_value = "android")]
+        transport: Transport,
+        #[arg(long, value_enum, default_value = "balanced")]
+        profile: omnirecovery::MirrorProfile,
+        #[arg(long, value_enum, default_value = "screen")]
+        video: omnirecovery::MirrorVideo,
+        #[arg(long, value_enum, default_value = "off")]
+        audio: omnirecovery::MirrorAudio,
+    },
+    /// Inspect reported Android specs and shared storage.
+    AndroidDetails {
+        id: String,
+        #[arg(long, value_enum, default_value = "android")]
+        transport: Transport,
     },
     /// List devices exposed by a local USB transport helper.
     Devices { transport: Transport },
@@ -204,19 +201,6 @@ enum Command {
         #[arg(long, value_enum, default_value = "shared")]
         android_scope: AndroidScope,
     },
-    /// Copy and verify an existing image into a new capture directory.
-    CloneImage {
-        image: PathBuf,
-        destination: PathBuf,
-    },
-    /// Read an exclusively opened, already read-only whole Linux block device.
-    #[cfg(target_os = "linux")]
-    CloneDisk {
-        device: PathBuf,
-        destination: PathBuf,
-    },
-    /// Recheck every data file against an acquisition manifest.
-    VerifyAcquisition { directory: PathBuf },
     /// List files from a live Android category without copying their contents.
     BrowseAndroid {
         id: String,
@@ -247,6 +231,41 @@ enum Command {
         #[arg(long)]
         confirm_id: String,
     },
+}
+
+#[derive(Subcommand)]
+enum FileCommand {
+    /// List deleted FAT32 short entries whose contiguous cluster spans are free.
+    UndeleteFat32 {
+        image: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        volume_offset: u64,
+    },
+    /// Export one candidate from the exact FAT32 image examined earlier.
+    RecoverFat32 {
+        image: PathBuf,
+        entry_offset: u64,
+        destination: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        volume_offset: u64,
+        #[arg(long)]
+        source_sha256: String,
+        #[arg(long)]
+        expected_sha256: Option<String>,
+    },
+    /// Copy and verify an existing image into a new capture directory.
+    CloneImage {
+        image: PathBuf,
+        destination: PathBuf,
+    },
+    /// Read an exclusively opened, already read-only whole Linux block device.
+    #[cfg(target_os = "linux")]
+    CloneDisk {
+        device: PathBuf,
+        destination: PathBuf,
+    },
+    /// Recheck every data file against an acquisition manifest.
+    VerifyAcquisition { directory: PathBuf },
     /// Restore a password-protected OmniRecovery file archive to a new directory.
     RestoreFiles {
         archive: PathBuf,
@@ -416,7 +435,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let mut output = io::stdout().lock();
     match command {
-        Command::AnalyzeLeapp {
+        Command::Evidence(EvidenceCommand::AnalyzeLeapp {
             engine,
             input,
             destination,
@@ -424,7 +443,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             checkout,
             python,
             script_sha256,
-        } => {
+        }) => {
             let report = omnirecovery::analyze_leapp(
                 engine,
                 format,
@@ -436,17 +455,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::TskDeleted {
+        Command::Evidence(EvidenceCommand::TskDeleted {
             image,
             destination,
             sector_offset,
             sector_size,
-        } => {
+        }) => {
             let report =
                 omnirecovery::tsk_deleted(&image, &destination, sector_offset, sector_size)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Recover {
+        Command::Evidence(EvidenceCommand::Recover {
             image,
             destination,
             media,
@@ -454,7 +473,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             length,
             source_sha256,
             expected_sha256,
-        } => {
+        }) => {
             let finding = omnirecovery::export_recovery(
                 &image,
                 &source_sha256,
@@ -466,22 +485,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             serde_json::to_writer_pretty(&mut output, &finding)?;
         }
-        Command::PairAndroid { address } => {
+        Command::Device(DeviceCommand::PairAndroid { address }) => {
             let code = Zeroizing::new(rpassword::prompt_password("Android pairing code: ")?);
             omnirecovery::pair_android_wifi(&address, &code)?;
             serde_json::to_writer_pretty(&mut output, &serde_json::json!({"status": "paired"}))?;
         }
-        Command::ConnectAndroid { address } => {
+        Command::Device(DeviceCommand::ConnectAndroid { address }) => {
             omnirecovery::connect_android_wifi(&address)?;
             serde_json::to_writer_pretty(&mut output, &serde_json::json!({"status": "connected"}))?;
         }
-        Command::BackupHistory { directory } => {
+        Command::Device(DeviceCommand::BackupHistory { directory }) => {
             serde_json::to_writer_pretty(&mut output, &omnirecovery::capture_history(&directory)?)?
         }
-        Command::IosRecoveryStatus => {
+        Command::Device(DeviceCommand::IosRecoveryStatus) => {
             serde_json::to_writer_pretty(&mut output, &omnirecovery::ios_recovery_status()?)?
         }
-        Command::IosEnterRecovery { id, confirm_id } => {
+        Command::Device(DeviceCommand::IosEnterRecovery { id, confirm_id }) => {
             if id != confirm_id {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -495,7 +514,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &serde_json::json!({"status": "recovery_transition_requested"}),
             )?;
         }
-        Command::IosExitRecovery { ecid, confirm_id } => {
+        Command::Device(DeviceCommand::IosExitRecovery { ecid, confirm_id }) => {
             if ecid != confirm_id {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -509,20 +528,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &serde_json::json!({"status": "normal_boot_requested"}),
             )?;
         }
-        Command::FastbootDevices => {
+        Command::Device(DeviceCommand::FastbootDevices) => {
             serde_json::to_writer_pretty(&mut output, &omnirecovery::android_fastboot_devices()?)?
         }
-        Command::AndroidDetails { id, transport } => {
+        Command::Device(DeviceCommand::AndroidDetails { id, transport }) => {
             let details = omnirecovery::inspect_android_details(transport, &id)?;
             serde_json::to_writer_pretty(&mut output, &details)?;
         }
-        Command::MirrorAndroid {
+        Command::Device(DeviceCommand::MirrorAndroid {
             id,
             transport,
             profile,
             video,
             audio,
-        } => {
+        }) => {
             let options = omnirecovery::MirrorOptions {
                 profile,
                 video,
@@ -539,7 +558,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &serde_json::json!({"status": "mirror_closed"}),
             )?;
         }
-        Command::PlanAction {
+        Command::Evidence(EvidenceCommand::PlanAction {
             action,
             destination,
             case,
@@ -547,7 +566,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             target_id,
             firmware,
             vendor_sha256,
-        } => {
+        }) => {
             omnirecovery::make_action_plan(
                 action,
                 &case,
@@ -561,25 +580,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &serde_json::json!({"plan": destination, "status": "awaiting_signed_request_and_approval"}),
             )?;
         }
-        Command::VerifyApproval {
+        Command::Evidence(EvidenceCommand::VerifyApproval {
             ledger,
             plan,
             trust,
             expected_head,
-        } => {
+        }) => {
             let report =
                 omnirecovery::verify_action_approval(&ledger, &trust, &expected_head, &plan)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Reconstruct {
+        Command::Evidence(EvidenceCommand::Reconstruct {
             image,
             manifest,
             destination,
-        } => {
+        }) => {
             let report = omnirecovery::reconstruct_file(&image, &manifest, &destination)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Cloud { command } => {
+        Command::Evidence(EvidenceCommand::Cloud { command }) => {
             let token = Zeroizing::new(rpassword::prompt_password("Google OAuth access token: ")?);
             match command {
                 CloudCommand::DriveTrash { page_token } => serde_json::to_writer_pretty(
@@ -618,32 +637,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 )?,
             }
         }
-        Command::AiTriage {
+        Command::Evidence(EvidenceCommand::AiTriage {
             image,
             model,
             remote_url,
             allow_remote: _,
-        } => {
+        }) => {
             let scan = omnirecovery::scan(&image)?;
             let report = omnirecovery::ai_triage(&scan, &model, remote_url.as_deref())?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Artifacts {
+        Command::Evidence(EvidenceCommand::Artifacts {
             source,
             kind,
             limit,
-        } => {
+        }) => {
             let report = omnirecovery::inspect_artifact(&source, kind, limit)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::CustodyKeygen { private_key } => {
+        Command::Evidence(EvidenceCommand::CustodyKeygen { private_key }) => {
             let public_key = omnirecovery::generate_custody_key(&private_key)?;
             serde_json::to_writer_pretty(
                 &mut output,
                 &serde_json::json!({ "public_key": public_key }),
             )?;
         }
-        Command::CustodyAppend {
+        Command::Evidence(EvidenceCommand::CustodyAppend {
             ledger,
             artifact,
             trust,
@@ -651,7 +670,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             actor,
             case,
             action,
-        } => {
+        }) => {
             let head = omnirecovery::append_custody(
                 &ledger,
                 &trust,
@@ -663,29 +682,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             serde_json::to_writer_pretty(&mut output, &head)?;
         }
-        Command::CustodyVerify {
+        Command::Evidence(EvidenceCommand::CustodyVerify {
             ledger,
             trust,
             expected_head,
-        } => {
+        }) => {
             let head = omnirecovery::verify_custody(&ledger, &trust, &expected_head)?;
             serde_json::to_writer_pretty(&mut output, &head)?;
         }
-        Command::UndeleteFat32 {
+        Command::File(FileCommand::UndeleteFat32 {
             image,
             volume_offset,
-        } => {
+        }) => {
             let report = omnirecovery::scan_fat32_deleted(&image, volume_offset)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::RecoverFat32 {
+        Command::File(FileCommand::RecoverFat32 {
             image,
             entry_offset,
             destination,
             volume_offset,
             source_sha256,
             expected_sha256,
-        } => {
+        }) => {
             let report = omnirecovery::recover_fat32_deleted(
                 &image,
                 volume_offset,
@@ -696,66 +715,66 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Devices { transport } => {
+        Command::Device(DeviceCommand::Devices { transport }) => {
             serde_json::to_writer_pretty(&mut output, &omnirecovery::detect_devices(transport)?)?;
         }
-        Command::Acquire {
+        Command::Device(DeviceCommand::Acquire {
             transport,
             id,
             destination,
             android_scope,
-        } => {
+        }) => {
             let report = omnirecovery::acquire_device(transport, &id, android_scope, &destination)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::CloneImage { image, destination } => {
+        Command::File(FileCommand::CloneImage { image, destination }) => {
             let report = omnirecovery::acquire_image(&image, &destination)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
         #[cfg(target_os = "linux")]
-        Command::CloneDisk {
+        Command::File(FileCommand::CloneDisk {
             device,
             destination,
-        } => {
+        }) => {
             let report = omnirecovery::acquire_disk(&device, &destination)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::VerifyAcquisition { directory } => {
+        Command::File(FileCommand::VerifyAcquisition { directory }) => {
             let report = omnirecovery::verify_acquisition(&directory)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::BrowseAndroid {
+        Command::Device(DeviceCommand::BrowseAndroid {
             id,
             transport,
             category,
-        } => {
+        }) => {
             let report = omnirecovery::browse_android_files(transport, &id, category)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::ExportAndroidFile {
+        Command::Device(DeviceCommand::ExportAndroidFile {
             id,
             relative_path,
             destination,
             transport,
-        } => {
+        }) => {
             let report =
                 omnirecovery::export_android_file(transport, &id, &relative_path, &destination)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::BackupAndroid {
+        Command::Device(DeviceCommand::BackupAndroid {
             id,
             archive,
             folders,
-        } => {
+        }) => {
             let password = read_new_backup_password()?;
             let report = omnirecovery::backup_android_folders(&id, &folders, &archive, &password)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::SendPhoneArchive {
+        Command::Device(DeviceCommand::SendPhoneArchive {
             archive,
             id,
             confirm_id,
-        } => {
+        }) => {
             if id != confirm_id {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -766,21 +785,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let report = omnirecovery::deliver_phone_archive(&archive, &id)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::RestoreFiles {
+        Command::File(FileCommand::RestoreFiles {
             archive,
             destination,
-        } => {
+        }) => {
             let password = Zeroizing::new(rpassword::prompt_password("Backup passphrase: ")?);
             let report = omnirecovery::restore_files(&archive, &destination, &password)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Scan {
+        Command::File(FileCommand::Scan {
             image,
             storage,
             media,
             offset,
             length,
-        } => {
+        }) => {
             let report = omnirecovery::scan_selected_media(
                 &image,
                 ScanOptions {
@@ -792,23 +811,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Compare { before, after } => {
+        Command::File(FileCommand::Compare { before, after }) => {
             let report = omnirecovery::compare(&before, &after)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Inventory { directory } => {
+        Command::File(FileCommand::Inventory { directory }) => {
             let report = omnirecovery::inventory(&directory)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::CompareExports { before, after } => {
+        Command::File(FileCommand::CompareExports { before, after }) => {
             let report = omnirecovery::compare_exports(&before, &after)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Repair {
+        Command::File(FileCommand::Repair {
             file,
             expected_sha256,
             output: destination,
-        } => {
+        }) => {
             let report = if let Some(destination) = destination {
                 omnirecovery::export_repair(&file, expected_sha256.as_deref(), &destination)?
             } else {
@@ -816,21 +835,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::BackupFiles { directory, archive } => {
+        Command::File(FileCommand::BackupFiles { directory, archive }) => {
             let password = read_new_backup_password()?;
             let report = omnirecovery::backup_files(&directory, &archive, &password)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }
-        Command::Catalog { source, query } => {
+        Command::File(FileCommand::Catalog { source, query }) => {
             serde_json::to_writer_pretty(
                 &mut output,
                 &omnirecovery::catalogue(&source, None, &query)?,
             )?;
         }
-        Command::Verify { file } => {
+        Command::File(FileCommand::Verify { file }) => {
             serde_json::to_writer_pretty(&mut output, &omnirecovery::verify_file(&file)?)?;
         }
-        Command::Agent { source } => return run_agent(&source, output),
+        Command::File(FileCommand::Agent { source }) => return run_agent(&source, output),
     }
     writeln!(output)?;
     Ok(())

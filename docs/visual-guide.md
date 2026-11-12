@@ -94,7 +94,11 @@ Open **Device service**, then choose **Android**, **iPhone & iPad**, or **Firmwa
 
 ## Browse or transfer from a connected phone
 
-Open **My devices**, select an Android phone, then choose a live category in the sidebar or on the device card. The matching files appear on the device page. Use the filename filter to narrow results and **Save copy** to export a selected file.
+Open **My devices** and select an authorized Android phone. The overview displays its reported device specifications, battery, available RAM and shared storage. **Quick transfer** selects computer files and uses the current Android USB phone as the target. You can also drop files onto the phone illustration.
+
+![OmniRecovery selected phone dashboard with device specifications, storage and quick start](images/selected-phone-dashboard.png)
+
+Choose a live category in the sidebar or on the device card. The matching files appear on the device page. Use the filename filter to narrow results and **Save copy** to export a selected file.
 
 ![OmniRecovery live Android photo listing and per-file export controls](images/live-phone-browse.png)
 

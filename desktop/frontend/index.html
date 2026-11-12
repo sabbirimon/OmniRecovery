@@ -37,7 +37,7 @@
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span><span class="nav-label">Automation</span></button>
         <button class="nav-button" data-view="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.7</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.8</span></div>
     </aside>
 
     <main>
@@ -67,8 +67,8 @@
       </section>
 
       <section id="my-devices" class="view" aria-labelledby="my-devices-title" hidden>
-        <header class="section-top"><div><h1 id="my-devices-title">My devices</h1><p id="phone-count" aria-live="polite">Detect phones to get started.</p></div><button data-action id="refresh-phones">Refresh devices</button></header>
-        <div class="phone-mode" role="group" aria-label="Connection method">
+        <header class="section-top"><div><h1 id="my-devices-title">My devices</h1><p id="phone-count" aria-live="polite">Detect phones to get started.</p></div><div class="actions"><button data-action id="choose-phone" hidden>Change device</button><button data-action id="refresh-phones">Refresh devices</button></div></header>
+        <div class="phone-mode" id="phone-mode-switch" role="group" aria-label="Connection method">
           <button data-action id="phone-usb-mode" aria-pressed="true">USB</button>
           <button data-action id="phone-wireless-mode" aria-pressed="false">Wireless</button>
         </div>
@@ -92,9 +92,31 @@
           <p class="muted" id="phone-wireless-status" aria-live="polite"></p>
         </section>
         <section class="card phone-detail" id="phone-detail" hidden>
-          <div class="section-top"><div><h2 id="phone-name"></h2><p class="muted" id="phone-state"></p></div><button data-action id="phone-authorize">Connection setup</button></div>
-          <div class="phone-category-grid" id="phone-categories"></div>
-          <dl class="storage-specs" id="phone-live-specs" hidden></dl>
+          <div class="phone-overview">
+            <figure class="phone-device-illustration">
+              <div class="phone-device-frame">
+                <button data-action id="phone-drop-target" class="phone-drop-target" hidden><span aria-hidden="true">↑</span><strong>Choose files</strong><small hidden>Or drop files here</small></button>
+              </div>
+            </figure>
+            <div class="phone-overview-info">
+              <div class="section-top">
+                <div><h2 id="phone-name"></h2><p class="muted" id="phone-state"></p></div>
+                <div class="actions"><button data-action id="phone-refresh-specs" hidden>Refresh details</button><button data-action id="phone-authorize">Connection setup</button></div>
+              </div>
+              <p class="muted" id="phone-live-spec-state" aria-live="polite"></p>
+              <dl class="phone-overview-specs" id="phone-live-specs" hidden></dl>
+              <div class="phone-overview-storage" id="phone-overview-storage" hidden>
+                <label for="phone-storage-meter">Shared storage</label>
+                <progress id="phone-storage-meter" max="100" value="0"></progress>
+                <p class="muted" id="phone-storage-values"></p>
+              </div>
+            </div>
+          </div>
+          <div class="phone-quick-start">
+            <h3>Quick start</h3>
+            <div class="phone-category-grid" id="phone-quick-actions"></div>
+          </div>
+          <details class="phone-export-options" id="phone-browse-options"><summary>Browse shared files by category</summary><div class="phone-category-grid" id="phone-categories"></div></details>
           <section class="phone-browse-results" id="phone-live-results" aria-labelledby="phone-live-title" hidden>
             <div class="section-top"><div><h3 id="phone-live-title"></h3><p class="muted" id="phone-live-count" aria-live="polite"></p></div><label>Filter filenames<input id="phone-live-query" type="search" maxlength="256"></label></div>
             <div class="table-wrap"><table><thead><tr><th>Shared file</th><th>Type</th><th>Export</th></tr></thead><tbody id="phone-live-rows"></tbody></table></div>
@@ -111,6 +133,11 @@
             <button>Close</button>
             <button type="button" data-action id="phone-connect-check" class="primary">Check connection</button>
           </form>
+        </dialog>
+        <dialog id="phone-companion-dialog" class="connection-dialog" aria-labelledby="phone-companion-title">
+          <h2 id="phone-companion-title">Restore in the Android companion</h2>
+          <ol><li>Open OmniRecovery on the receiving Android phone.</li><li>Choose the transferred .omnibackup file from Downloads.</li><li>Enter the archive passphrase, choose a destination folder, and select Verify and restore files.</li></ol>
+          <form method="dialog" class="actions"><button>Close</button></form>
         </dialog>
       </section>
 
@@ -253,9 +280,10 @@
         <div class="transfer-grid">
           <section class="card transfer-device transfer-source" aria-labelledby="transfer-source-heading">
             <h2 id="transfer-source-heading">Source</h2>
-            <label>Copy from<select id="transfer-source"><option value="">Choose a source</option><option value="export">Local export folder</option></select></label>
+            <label>Copy from<select id="transfer-source"><option value="">Choose a source</option><option value="export">Local export folder</option><option value="files">Selected computer files</option></select></label>
             <div class="transfer-device-art" aria-hidden="true"><span class="transfer-phone-shape"></span></div>
             <p class="muted" id="transfer-source-state">Choose a connected Android phone or a local export folder.</p>
+            <div id="transfer-files-source" hidden><p id="transfer-picked-summary" class="selection"></p><button data-action id="pick-transfer-files">Choose files</button></div>
             <div id="transfer-export-source" hidden>
               <p id="transfer-name" class="selection">Choose a local phone export folder.</p>
               <div class="actions"><button data-action id="pick-transfer">Choose folder</button><button data-action id="review-transfer-files">Review files</button></div>

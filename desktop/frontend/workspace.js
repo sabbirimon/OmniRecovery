@@ -20,6 +20,7 @@ let cloneSelection = new Set();
 let clonePhones = [];
 let clonePhonesLoaded = false;
 let pendingCloneSource = null;
+let pickedTransferCount = 0;
 let deviceList = null;
 let snapshots = null;
 let activeLog = null;
@@ -122,7 +123,7 @@ window.syncWorkspaceControls = () => {
   const exportSource = el('transfer-source').value === 'export';
   const sourceReady = exportSource
     ? selections.has('transfer') && (cloneList === null || cloneSelection.size > 0)
-    : sourcePhone && chosenCloneFolders().length > 0;
+    : el('transfer-source').value === 'files' ? pickedTransferCount > 0 : sourcePhone && chosenCloneFolders().length > 0;
   const targetReady = el('transfer-target').value === 'computer' || targetPhone;
   const query = el('phone-live-query').value.trim().toLowerCase();
   const matches = currentBrowse?.report.entries.filter(item => item.path.toLowerCase().includes(query)).length || 0;
@@ -456,6 +457,7 @@ let phoneMode = 'usb';
 let usbPhones = [];
 let wirelessPhones = [];
 let selectedPhone = null;
+let phoneChooserOpen = false;
 let phonesLoaded = false;
 let phoneRefreshInFlight = false;
 let lastUsbRefresh = 0;
@@ -471,6 +473,7 @@ const livePhoneCategories = [
 let currentBrowse = null;
 let browsePage = 0;
 let phonePanelKey = null;
+let phoneSpecsRequest = null;
 let dialogPhone = null;
 const phonePageSize = 80;
 
@@ -572,50 +575,100 @@ function phoneCategoryButton(symbol, title, detail, action) {
   return button;
 }
 
+function requestPhoneSpecs(phone, force = false) {
+  if (!phone || !readyPhone(phone) || !phone.transport.startsWith('android')) return;
+  const key = phoneKey(phone);
+  if (!force && phoneSpecsRequest?.key === key) return;
+  const request = {key};
+  phoneSpecsRequest = request;
+  el('phone-live-spec-state').textContent = 'Reading device details…';
+  invoke('android_details', {id:phone.target, transport:phone.transport}).then(report => {
+    if (phoneSpecsRequest !== request || selectedPhone !== key) return;
+    const {properties, memory, battery_percent:battery, display, shared_storage:storage} = report;
+    const fields = [['Model', properties.model || phone.name], ['Manufacturer', properties.manufacturer],
+      ['Android version', properties.android_version], ['SDK', properties.sdk],
+      ['Chipset', properties.chipset], ['Architecture', properties.cpu_abi], ['Display', display],
+      ['Available RAM', memory && `${size(memory.available)} of ${size(memory.capacity)}`],
+      ['Battery charge', battery == null ? null : `${battery}%`], ['Build', properties.build],
+      ['Security patch', properties.security_patch], ['Connection', phone.transport === 'android' ? 'USB' : 'Paired Wi-Fi']];
+    describe('phone-live-specs', fields.filter(([, value]) => value != null && value !== ''));
+    el('phone-live-specs').hidden = false;
+    el('phone-live-spec-state').textContent = '';
+    el('phone-overview-storage').hidden = !storage;
+    if (storage) {
+      const used = storage.capacity - storage.available;
+      el('phone-storage-meter').value = 100 * used / storage.capacity;
+      el('phone-storage-values').textContent = `${size(used)} used or reserved · ${size(storage.available)} available · ${size(storage.capacity)} total`;
+    }
+  }).catch(error => {
+    if (phoneSpecsRequest !== request || selectedPhone !== key) return;
+    el('phone-live-spec-state').textContent = typeof error === 'string' ? error : error.message;
+  });
+}
+
+const currentPhone = () => [...usbPhones, ...wirelessPhones].find(phone => phoneKey(phone) === selectedPhone);
+
 function renderPhoneDetails(phone) {
   const key = phone ? JSON.stringify([phoneKey(phone), phone.state]) : null;
   if (phonePanelKey !== key) {
     phonePanelKey = key;
+    phoneSpecsRequest = null;
     clearPhoneResults();
     el('phone-live-specs').hidden = true;
     el('phone-live-specs').replaceChildren();
+    el('phone-live-spec-state').textContent = '';
+    el('phone-overview-storage').hidden = true;
+    el('phone-browse-options').open = false;
   }
   el('phone-detail').hidden = !phone;
   if (!phone) return;
   el('phone-name').textContent = phone.name;
   el('phone-state').textContent = phoneStatus(phone);
+  const android = readyPhone(phone) && phone.transport.startsWith('android');
+  const usbAndroid = android && phone.transport === 'android';
+  el('phone-drop-target').hidden = !usbAndroid;
+  el('phone-refresh-specs').hidden = !android;
+  el('phone-browse-options').hidden = !android;
   const actions = [];
-  if (readyPhone(phone) && phone.transport.startsWith('android')) {
-    for (const [symbol, title, category] of livePhoneCategories) {
-      actions.push(phoneCategoryButton(symbol, title, 'Browse on phone', () => browsePhone(phone, title, category)));
-    }
-    actions.push(phoneCategoryButton('◎', 'Device specs', 'Read phone details', () => run('Reading phone specifications…', async () => {
-      const report = await invoke('android_details', {id:phone.target, transport:phone.transport});
-      const {properties, battery_percent:battery, display, shared_storage:storage} = report;
-      describe('phone-live-specs', [['Manufacturer', properties.manufacturer], ['Model', properties.model],
-        ['Android version', properties.android_version], ['SDK', properties.sdk], ['Architecture', properties.cpu_abi],
-        ['Display', display], ['Battery', battery == null ? null : `${battery}%`],
-        ['Shared storage', storage ? `${size(storage.available)} available of ${size(storage.capacity)}` : null]]
-        .filter(([, value]) => value != null));
-      el('phone-live-specs').hidden = false;
-    })));
+  if (android) {
+    actions.push(phoneCategoryButton('▤', 'Browse files', 'Read shared storage', () => browsePhone(phone, 'Files', 'files')));
     actions.push(phoneCategoryButton('⊞', 'Backup device', 'Choose capture scope', () => capturePhoneCategory(phone, preferences.scope)));
-    if (phone.transport === 'android') {
+    actions.push(phoneCategoryButton('↓', 'Export shared files', 'Save a verified capture', () => capturePhoneCategory(phone, 'shared')));
+    if (usbAndroid) {
+      actions.push(phoneCategoryButton('↑', 'Quick transfer', 'Choose computer files', () => selectQuickTransfer(phone)));
       actions.push(phoneCategoryButton('↗', 'Phone clone', 'Use this phone as source', () => {
         pendingCloneSource = phone.target;
         showView('transfer');
       }));
     }
     actions.push(phoneCategoryButton('▯', 'Screen mirror', 'Open dedicated window', () => openMirrorTool(phone.transport)));
+    actions.push(phoneCategoryButton('◇', 'Phone companion', 'Restore an archive', () => el('phone-companion-dialog').showModal()));
   } else if (readyPhone(phone) && phone.transport === 'ios') {
     actions.push(phoneCategoryButton('↓', 'iOS backup', 'Collect device backup', () => capturePhoneCategory(phone, 'shared')));
+    actions.push(phoneCategoryButton('◈', 'iPhone & iPad service', 'Check boot mode', () => showView('service-ios')));
   } else {
     actions.push(phoneCategoryButton('▯', 'Authorize phone', 'Connection instructions', () => openPhoneAuthorization(phone)));
   }
-  el('phone-categories').replaceChildren(...actions);
+  actions.push(phoneCategoryButton('▧', 'WhatsApp exports', 'Read exported chat text', () => {
+    el('record-kind').value = 'whatsapp_export';
+    el('record-kind').dispatchEvent(new Event('change'));
+    showView('records-review');
+  }));
+  actions.push(phoneCategoryButton('⌕', 'Data recovery', 'Scan an image or export', () => showView('scan')));
+  actions.push(phoneCategoryButton('≡', 'Backup history', 'Review saved captures', () => {
+    showCaptureTab('history');
+    showView('capture');
+  }));
+  el('phone-quick-actions').replaceChildren(...actions);
+  el('phone-categories').replaceChildren(...(android ? livePhoneCategories.map(([symbol, title, category]) =>
+    phoneCategoryButton(symbol, title, 'Browse on phone', () => browsePhone(phone, title, category))) : []));
   el('phone-export-categories').replaceChildren(...exportPhoneCategories.map(([symbol, title, category, query]) =>
     phoneCategoryButton(symbol, title, 'Open from an export', () => phoneExportCategory(phone, category, query))));
+  if (!el('my-devices').hidden) requestPhoneSpecs(phone);
 }
+
+el('phone-refresh-specs').addEventListener('click', () => requestPhoneSpecs(currentPhone(), true));
+el('phone-drop-target').addEventListener('click', () => selectQuickTransfer(currentPhone()));
 
 function phoneKey(phone) { return JSON.stringify([phone.transport, phone.target, phone.name]); }
 
@@ -624,6 +677,11 @@ function renderPhones() {
   if (selectedPhone && !phones.some(phone => phoneKey(phone) === selectedPhone)) selectedPhone = null;
   if (!selectedPhone && phones.length === 1) selectedPhone = phoneKey(phones[0]);
   const current = phones.find(phone => phoneKey(phone) === selectedPhone);
+  const showChooser = phoneChooserOpen || !current || !readyPhone(current);
+  el('phone-card-list').hidden = !showChooser;
+  el('phone-mode-switch').hidden = !showChooser;
+  el('choose-phone').hidden = !current || !readyPhone(current);
+  el('choose-phone').textContent = showChooser ? 'Hide device chooser' : 'Change device';
   const mode = phoneMode === 'usb' ? 'USB' : 'wireless';
   el('phone-count').textContent = `${number.format(phones.length)} ${mode} ${phones.length === 1 ? 'device' : 'devices'} detected`;
   const add = text('button', '', 'phone-card phone-card-add');
@@ -633,6 +691,7 @@ function renderPhones() {
   const select = phone => {
     phoneMode = phone.transport === 'android_wireless' ? 'wireless' : 'usb';
     selectedPhone = phoneKey(phone);
+    phoneChooserOpen = false;
     if (el('my-devices').hidden) showView('my-devices');
     renderPhones();
     controls();
@@ -670,11 +729,19 @@ function renderPhones() {
   el('phone-usb-mode').setAttribute('aria-pressed', String(phoneMode === 'usb'));
   el('phone-wireless-mode').setAttribute('aria-pressed', String(phoneMode === 'wireless'));
   el('phone-usb-setup').hidden = phoneMode !== 'usb' || Boolean(current && readyPhone(current));
-  el('phone-wireless-setup').hidden = phoneMode !== 'wireless';
+  el('phone-wireless-setup').hidden = phoneMode !== 'wireless' || !showChooser;
   renderPhoneDetails(current);
 }
 
+el('choose-phone').addEventListener('click', () => {
+  phoneChooserOpen = !phoneChooserOpen;
+  renderPhones();
+  controls();
+});
+
 function openPhoneSetup() {
+  phoneChooserOpen = true;
+  renderPhones();
   const panel = el(`phone-${phoneMode}-setup`);
   panel.hidden = false;
   panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -1080,15 +1147,21 @@ function renderTransferChoices() {
   const sourcePhone = clonePhone(source.id);
   const targetPhone = clonePhone(target.id);
   const fromExport = source.value === 'export';
+  const fromFiles = source.value === 'files';
   const samePhone = sourcePhone && sourcePhone === targetPhone;
   el('transfer-folders').hidden = !sourcePhone;
   el('transfer-export-source').hidden = !fromExport;
+  el('transfer-files-source').hidden = !fromFiles;
+  el('transfer-picked-summary').textContent = pickedTransferCount
+    ? `${number.format(pickedTransferCount)} selected ${pickedTransferCount === 1 ? 'file' : 'files'}`
+    : 'Choose the files you want to copy.';
   el('transfer-selection').hidden = !fromExport || cloneList === null;
   source.closest('.transfer-device').classList.toggle('transfer-connected', Boolean(sourcePhone));
   target.closest('.transfer-device').classList.toggle('transfer-connected', Boolean(targetPhone));
   el('transfer-source-state').textContent = sourcePhone
     ? 'USB debugging authorized.'
-    : fromExport ? 'Use a saved phone export, capture data folder, or other local files.'
+    : fromFiles ? 'Selected files from this computer.'
+      : fromExport ? 'Use a saved phone export, capture data folder, or other local files.'
       : 'Choose a connected Android phone or a local export folder.';
   el('transfer-target-state').textContent = samePhone
     ? 'Choose a different phone.'
@@ -1097,7 +1170,8 @@ function renderTransferChoices() {
         : 'Choose a different Android phone or save the archive for later.';
   el('transfer-selection-note').textContent = sourcePhone
     ? 'For messages, contacts, and chats, choose a local export containing those files.'
-    : fromExport ? 'Review files to choose individual items. The default is all compatible files in the folder.'
+    : fromFiles ? 'The archive includes the files you selected.'
+      : fromExport ? 'Review files to choose individual items. The default is all compatible files in the folder.'
       : 'Choose a source to see its file options.';
   el('start-transfer').textContent = target.value === 'computer' ? 'Save encrypted archive' : 'Start transfer';
   controls();
@@ -1117,8 +1191,8 @@ async function refreshClonePhones() {
   }
   clonePhonesLoaded = true;
   clonePhones = devices.filter(phone => phone.state === 'device');
-  const add = (select, placeholder, alternate) => {
-    select.replaceChildren(new Option(placeholder, ''), alternate, ...devices.map(phone => {
+  const add = (select, placeholder, ...alternates) => {
+    select.replaceChildren(new Option(placeholder, ''), ...alternates, ...devices.map(phone => {
       const name = phone.model?.replaceAll('_', ' ') || 'Android phone';
       const details = phone.state === 'device' ? phone.id : `${phone.id} · ${words(phone.state)}`;
       const option = new Option(`${name} · ${details}`, `phone:${phone.id}`);
@@ -1126,7 +1200,7 @@ async function refreshClonePhones() {
       return option;
     }));
   };
-  add(source, 'Choose a source', new Option('Local export folder', 'export'));
+  add(source, 'Choose a source', new Option('Local export folder', 'export'), new Option('Selected computer files', 'files'));
   add(target, 'Choose a destination', new Option('Save archive to this computer', 'computer'));
   const restore = (select, previous) => {
     if ([...select.options].some(option => option.value === previous && !option.disabled)) select.value = previous;
@@ -1167,12 +1241,45 @@ pick('pick-transfer', 'transfer', 'transfer-name', () => {
   renderTransferChoices();
 });
 
+function selectQuickTransfer(phone, dropped = null) {
+  if (phone && (!readyPhone(phone) || phone.transport !== 'android')) return;
+  run('Selecting files to transfer…', async () => {
+    const count = await invoke('pick_transfer_files', {dropped});
+    if (count == null) return;
+    pickedTransferCount = count;
+    if (phone) {
+      await refreshClonePhones();
+      el('transfer-target').value = clonePhones.some(device => device.id === phone.target) ? `phone:${phone.target}` : '';
+      showView('transfer');
+    }
+    el('transfer-source').value = 'files';
+    el('transfer-result-card').hidden = true;
+    renderTransferChoices();
+  });
+}
+
+el('pick-transfer-files').addEventListener('click', () => selectQuickTransfer(null));
+
+const dropEvents = window.__TAURI__?.event;
+if (dropEvents) {
+  dropEvents.listen('tauri://drag-drop', ({payload}) => {
+    const button = el('phone-drop-target');
+    if (busy || el('my-devices').hidden || button.hidden || !payload?.paths?.length || !payload.position) return;
+    const bounds = button.closest('.phone-device-frame').getBoundingClientRect();
+    const x = payload.position.x / window.devicePixelRatio;
+    const y = payload.position.y / window.devicePixelRatio;
+    if (x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+      selectQuickTransfer(currentPhone(), payload.paths);
+    }
+  }).then(() => { el('phone-drop-target').querySelector('small').hidden = false; }).catch(() => {});
+}
+
 el('start-transfer').addEventListener('click', () => {
   const target = clonePhone('transfer-target');
   const phone = clonePhone('transfer-source');
   const from = phone
     ? {kind:'android', id:phone.id, folders:chosenCloneFolders()}
-    : {kind:'export', selection:cloneList === null ? null : [...cloneSelection]};
+    : el('transfer-source').value === 'files' ? {kind:'files'} : {kind:'export', selection:cloneList === null ? null : [...cloneSelection]};
   run(target ? 'Creating and transferring the encrypted archive…' : 'Preparing the encrypted archive…', async () => {
     const password = el('password').value;
     if (!/^[ -~]{12,128}$/.test(password)) throw Error('Enter a passphrase of 12–128 printable ASCII characters.');

@@ -43,7 +43,9 @@ pub use acquisition::{
 pub use ai::{AiTriage, ai_triage};
 pub use android_wifi::{connect_android_wifi, pair_android_wifi};
 pub use artifacts::{ArtifactKind, ArtifactReport, inspect_artifact};
-pub use backup::{BackupReport, backup_files, backup_selected_files, restore_files};
+pub use backup::{
+    BackupReport, backup_files, backup_individual_files, backup_selected_files, restore_files,
+};
 pub use catalogue::{
     Catalogue, CatalogueEntry, FileCategory, catalogue, catalogue_file, verify_file,
 };

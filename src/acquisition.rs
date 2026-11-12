@@ -373,6 +373,7 @@ pub(crate) fn android_properties(
         ("sdk", "ro.build.version.sdk"),
         ("security_patch", "ro.build.version.security_patch"),
         ("cpu_abi", "ro.product.cpu.abi"),
+        ("chipset", "ro.soc.model"),
         ("build", "ro.build.display.id"),
     ] {
         let mut adb = crate::android_wifi::adb_command()?;

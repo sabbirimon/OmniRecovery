@@ -112,6 +112,7 @@ struct Workspace {
     disks: Vec<devices::Disk>,
     active_volume: Option<devices::Volume>,
     phone_browse: Option<PhoneBrowse>,
+    transfer_files: Vec<PathBuf>,
     demo: tempfile::TempDir,
 }
 
@@ -379,9 +380,53 @@ async fn save_phone_file(
     .await
 }
 
+#[tauri::command]
+async fn pick_transfer_files(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    dropped: Option<Vec<PathBuf>>,
+) -> Result<Option<usize>, String> {
+    let state = state.inner().clone();
+    work(move || {
+        let paths = match dropped {
+            Some(paths) => paths,
+            None => {
+                let Some(files) = app
+                    .dialog()
+                    .file()
+                    .set_title("Choose files for the phone")
+                    .blocking_pick_files()
+                else {
+                    return Ok(None);
+                };
+                files
+                    .into_iter()
+                    .map(|file| file.into_path().map_err(error))
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+        };
+        if paths.is_empty()
+            || paths.len() > 20_000
+            || paths.iter().any(|path| {
+                !path.is_absolute()
+                    || !path
+                        .symlink_metadata()
+                        .is_ok_and(|metadata| metadata.is_file())
+            })
+        {
+            return Err("Choose 1–20,000 ordinary local files.".into());
+        }
+        let count = paths.len();
+        lock(&state)?.transfer_files = paths;
+        Ok(Some(count))
+    })
+    .await
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum TransferSource {
+    Files,
     Export {
         selection: Option<Vec<usize>>,
     },
@@ -422,7 +467,12 @@ async fn create_transfer(
                 .transpose()?;
             Some((directory, paths))
         }
-        TransferSource::Android { .. } => None,
+        TransferSource::Android { .. } | TransferSource::Files => None,
+    };
+    let picked_files = if matches!(source, TransferSource::Files) {
+        lock(&state)?.transfer_files.clone()
+    } else {
+        Vec::new()
     };
     work(move || {
         let temporary = target
@@ -450,6 +500,11 @@ async fn create_transfer(
             path
         };
         let (backup, unavailable_folders) = match source {
+            TransferSource::Files => {
+                let backup = omnirecovery::backup_individual_files(&picked_files, &path, &password)
+                    .map_err(error)?;
+                (backup, Vec::new())
+            }
             TransferSource::Android { id, folders } => {
                 let result = omnirecovery::backup_android_folders(&id, &folders, &path, &password)
                     .map_err(error)?;
@@ -703,6 +758,7 @@ fn main() {
         disks: Vec::new(),
         active_volume: None,
         phone_browse: None,
+        transfer_files: Vec::new(),
         demo: tempfile::tempdir().expect("temporary directory unavailable"),
     };
     tauri::Builder::default()
@@ -723,6 +779,7 @@ fn main() {
             repair_file,
             compare_sources,
             create_transfer,
+            pick_transfer_files,
             browse_phone,
             save_phone_file,
             preview_media,

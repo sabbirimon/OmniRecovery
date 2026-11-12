@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::AeadInPlace};
 use pbkdf2::pbkdf2_hmac;
@@ -40,6 +40,51 @@ pub fn backup_selected_files(
     paths: &[String],
 ) -> io::Result<BackupReport> {
     make_backup(directory, archive, password, Some(paths))
+}
+
+/// Package explicitly selected computer files, preserving each basename.
+pub fn backup_individual_files(
+    paths: &[PathBuf],
+    archive: &Path,
+    password: &str,
+) -> io::Result<BackupReport> {
+    validate_password(password)?;
+    if paths.is_empty() || paths.len() > MAX_FILES {
+        return Err(invalid("select 1–20,000 ordinary files"));
+    }
+    let staging = tempfile::Builder::new()
+        .prefix("omnirecovery-picked-files-")
+        .tempdir()?;
+    let mut total = 0_u64;
+    for path in paths {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| portable_path(name))
+            .ok_or_else(|| invalid("a selected file name is incompatible with Android restore"))?;
+        let expected = verify_file(path)?;
+        total = total
+            .checked_add(expected.length)
+            .filter(|size| *size <= MAX_BYTES)
+            .ok_or_else(|| invalid("migration exceeds the 64 GiB payload limit"))?;
+        let destination = staging.path().join(name);
+        let mut output = fs::File::create_new(&destination).map_err(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                invalid("two selected files have the same name")
+            } else {
+                error
+            }
+        })?;
+        let mut input = open_image(path)?.take(expected.length + 1);
+        if io::copy(&mut input, &mut output)? != expected.length {
+            return Err(invalid("a selected file changed while copying"));
+        }
+        drop(output);
+        if verify_file(&destination)? != expected {
+            return Err(invalid("a selected file changed while copying"));
+        }
+    }
+    backup_files(staging.path(), archive, password)
 }
 
 pub(crate) fn validate_password(password: &str) -> io::Result<()> {

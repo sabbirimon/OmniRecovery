@@ -2480,7 +2480,7 @@ dependencies = [
 
 [[package]]
 name = "omnirecovery"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "aes-gcm",
  "clap",
@@ -2504,7 +2504,7 @@ dependencies = [
 
 [[package]]
 name = "omnirecovery-desktop"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.4.3",

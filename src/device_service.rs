@@ -158,6 +158,7 @@ pub struct AndroidStorage {
 pub struct AndroidDetails {
     pub properties: std::collections::BTreeMap<&'static str, String>,
     pub shared_storage: Option<AndroidStorage>,
+    pub memory: Option<AndroidStorage>,
     pub battery_percent: Option<u8>,
     pub display: Option<String>,
 }
@@ -189,15 +190,37 @@ fn parse_storage(output: &str) -> Option<AndroidStorage> {
     })
 }
 
+fn parse_memory(output: &str) -> Option<AndroidStorage> {
+    let value = |key: &str| {
+        let row = output.lines().find_map(|line| line.strip_prefix(key))?;
+        let mut columns = row.split_whitespace();
+        let kibibytes = columns.next()?.parse::<u64>().ok()?;
+        (columns.next()? == "kB")
+            .then_some(kibibytes)?
+            .checked_mul(1024)
+    };
+    let capacity = value("MemTotal:")?;
+    let available = value("MemAvailable:")?;
+    (capacity > 0 && available <= capacity).then_some(AndroidStorage {
+        capacity,
+        available,
+    })
+}
+
 /// Read only the named Android system properties and capacity/health counters.
 pub fn inspect_android_details(transport: Transport, id: &str) -> io::Result<AndroidDetails> {
     require_android(transport, id)?;
     let properties = crate::acquisition::android_properties(id)?;
-    let (shared_storage, battery_percent, display) = std::thread::scope(|scope| {
+    let (shared_storage, memory, battery_percent, display) = std::thread::scope(|scope| {
         let storage = scope.spawn(|| {
             android_shell(id, &["df", "-k", "/sdcard"])
                 .ok()
                 .and_then(|text| parse_storage(&text))
+        });
+        let memory = scope.spawn(|| {
+            android_shell(id, &["cat", "/proc/meminfo"])
+                .ok()
+                .and_then(|text| parse_memory(&text))
         });
         let battery = scope.spawn(|| {
             android_shell(id, &["dumpsys", "battery"])
@@ -232,6 +255,7 @@ pub fn inspect_android_details(transport: Transport, id: &str) -> io::Result<And
         });
         (
             storage.join().unwrap_or(None),
+            memory.join().unwrap_or(None),
             battery.join().unwrap_or(None),
             display,
         )
@@ -239,6 +263,7 @@ pub fn inspect_android_details(transport: Transport, id: &str) -> io::Result<And
     Ok(AndroidDetails {
         properties,
         shared_storage,
+        memory,
         battery_percent,
         display,
     })

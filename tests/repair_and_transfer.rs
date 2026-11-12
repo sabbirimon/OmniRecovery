@@ -142,3 +142,40 @@ fn portable_archive_is_encrypted_verified_and_no_clobber() {
     assert_eq!(fs::read(archive).unwrap(), bytes);
     assert_eq!(fs::read(input.join("DCIM/photo.txt")).unwrap(), data);
 }
+
+#[test]
+fn archives_individually_selected_files_without_copying_siblings() {
+    let fixture = tempfile::tempdir().unwrap();
+    let first = fixture.path().join("first");
+    let second = fixture.path().join("second");
+    let output = fixture.path().join("restored");
+    for directory in [&first, &second, &output] {
+        std::fs::create_dir(directory).unwrap();
+    }
+    let a = first.join("camera.jpg");
+    let b = second.join("notes.txt");
+    std::fs::write(&a, b"selected photo").unwrap();
+    std::fs::write(&b, b"selected notes").unwrap();
+    std::fs::write(first.join("private.txt"), b"outside selection").unwrap();
+    let archive = fixture.path().join("selected.omnibackup");
+    let password = "synthetic archive passphrase";
+    let result =
+        omnirecovery::backup_individual_files(&[a.clone(), b], &archive, password).unwrap();
+    assert_eq!(result.files, 2);
+    let restored = omnirecovery::restore_files(&archive, &output, password).unwrap();
+    assert_eq!(
+        std::fs::read(restored.output.join("data/camera.jpg")).unwrap(),
+        b"selected photo"
+    );
+    assert_eq!(
+        std::fs::read(restored.output.join("data/notes.txt")).unwrap(),
+        b"selected notes"
+    );
+    assert!(!restored.output.join("data/private.txt").exists());
+
+    let duplicate = second.join("camera.jpg");
+    std::fs::write(&duplicate, b"duplicate name").unwrap();
+    let rejected = fixture.path().join("rejected.omnibackup");
+    assert!(omnirecovery::backup_individual_files(&[a, duplicate], &rejected, password).is_err());
+    assert!(!rejected.exists());
+}

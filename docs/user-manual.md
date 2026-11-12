@@ -42,7 +42,7 @@ In **Forensics → Review phone exports**, choose Android or iOS, select your ex
 
 ### Browse a connected Android phone
 
-Open **My devices**, select the phone, and click **Photos**, **Videos**, **Music**, **Documents**, **Downloads**, or **Files**. Files appear on the same page. Use **Filter filenames** or choose **Save copy** on an individual result. The export compares the copy with a SHA-256 digest from the phone.
+Open **My devices** and select the phone. The device page reads the Android specifications and shared storage capacity. To see files, click **Photos**, **Videos**, **Music**, **Documents**, **Downloads**, or **Files**. Files appear on the same page. Use **Filter filenames** or choose **Save copy** on an individual result. The export compares the copy with a SHA-256 digest from the phone.
 
 If the connection needs authorization, open **Connection setup** and complete the device prompt. Shared-file browsing uses Android USB debugging or an already paired Wireless debugging connection. It lists standard shared folders and reports when the listing reaches its limit. For private records such as SMS, calls, contacts, and chat histories, use a readable export or supported backup.
 
@@ -53,6 +53,8 @@ If the connection needs authorization, open **Connection setup** and complete th
 3. Select the shared folders to transfer. If the source is a local export, use **Review files** to select individual items.
 4. Enter an archive passphrase and start the transfer. For a connected target, OmniRecovery compares the transferred archive's SHA-256 with the desktop copy.
 5. In the Android companion on the target, select the archive from **Downloads** and choose **Verify and restore files**. The companion asks for the passphrase and output folder.
+
+To transfer individual computer files, use **Quick transfer** or drop them onto the phone illustration on the selected Android USB device page. The selected phone becomes the target. Review the selection and confirm the transfer.
 
 The Android companion shipped in 0.3.6 reads the same archive format. [Transfer format and setup](repair-and-transfer.md)
 
