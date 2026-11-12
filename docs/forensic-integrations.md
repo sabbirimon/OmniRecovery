@@ -39,6 +39,14 @@ The destination parent must already exist and have room for the input copy and r
 
 [Android ALEAPP](https://github.com/abrignoni/ALEAPP) · [iOS iLEAPP](https://github.com/abrignoni/iLEAPP) · [Sleuth Kit fls](https://www.sleuthkit.org/sleuthkit/man/fls.html)
 
+## 0.3.10 validation
+
+- ALEAPP reported the seeded model from a synthetic Android `vendor/build.prop`. OmniRecovery recorded 125 report files with hashes. [Tested ALEAPP revision](https://github.com/abrignoni/ALEAPP/commit/6f0fc4d22d0b661bebcc7b1415c087a87607dc6c)
+- iLEAPP reported the seeded build from a synthetic iOS `SystemVersion.plist`. OmniRecovery recorded 107 report files with hashes. [Tested iLEAPP revision](https://github.com/abrignoni/iLEAPP/commit/ff134661f602c2009a87f709b85970e608dcac73)
+- Linux CI used the installed Sleuth Kit to find a seeded deleted FAT entry. [Linux package validation](https://github.com/sabbirimon/OmniRecovery/actions/runs/43215121835)
+
+The LEAPP checks used Python 3.13 on Intel macOS with network access disabled during analysis. Coverage applies to the seeded Android and iOS filesystem exports. A real Finder backup and broader artifact coverage remain validation work.
+
 ## Upstream repository audit
 
 Reviewed on 2026-11-12 using upstream repositories, documentation, and license files. Adapter status refers to OmniRecovery. A repository review establishes an integration candidate. Each proposed adapter has its own execution and ground-truth tests.
@@ -68,7 +76,7 @@ Reviewed on 2026-11-12 using upstream repositories, documentation, and license f
 
 ## Implementation sequence
 
-1. **Qualify the Forensics integrations.** The desktop and CLI accept Android exports, iOS backups, and disk images. Add imported report review and helper availability checks. Validate the ALEAPP/iLEAPP adapters with real pinned upstream releases and compare their results to direct invocation. Keep the already exercised Sleuth Kit FAT fixture as a regression check.
+1. **Broaden Forensics validation.** Add imported report review and helper availability checks. Extend the pinned ALEAPP and iLEAPP fixtures to representative artifacts and an unencrypted Finder backup, and compare results to direct invocation. Keep the Sleuth Kit FAT fixture as a regression check.
 2. **Standardize provenance.** Store the source digest, tool/version, argument profile, read scope, original report digest, and per-item evidence location. Display items as active files, deleted metadata, carved candidates, thumbnails, or fully verified exports as supported by their evidence. Treat gaps and unavailable regions as observations. Open HTML reports as external files or show parsed fields without executing upstream report content in the desktop app.
 3. **Add mobile record and disk recovery coverage.** Implement FQLite-backed review on copied SQLite databases and sidecars, import the mobile collectors’ exports, and add selected `icat` extraction. Verify source integrity and output SHA-256. Test unavailable permissions, encrypted inputs, unsupported schemas, missing sidecars, and files whose extents have been reused.
 4. **Compare independent methods.** Evaluate RecoverKit and OmniForensix-Mobile on named artifacts. Benchmark PhotoRec, Digler, and Data Recovery Using Python on the same images. Track recall, wrong matches, time, peak memory, and whether each result includes original path or offset. Keep TestDisk partition inspection, RecoverPy block search, and Volatility report import tied to their own evidence types.
