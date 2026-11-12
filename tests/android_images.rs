@@ -196,7 +196,7 @@ fn storage_scan_limits_carving_to_requested_bytes() {
         ])
         .output()
         .unwrap();
-    assert!(scan.status.success());
+    assert!(scan.status.success(), "scan process failed: {scan:?}");
     let report: serde_json::Value = serde_json::from_slice(&scan.stdout).unwrap();
     assert_eq!(report["storage_profile"], "memory-card");
     assert_eq!(
@@ -410,7 +410,14 @@ fn cli_emits_deterministic_json_and_returns_errors_before_output() {
         .arg(&path)
         .output()
         .unwrap();
-    assert!(first.status.success());
+    assert!(
+        first.status.success(),
+        "first scan process failed: {first:?}"
+    );
+    assert!(
+        second.status.success(),
+        "second scan process failed: {second:?}"
+    );
     assert_eq!(first.stdout, second.stdout);
     let report: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
     assert_eq!(report["schema_version"], 1);
