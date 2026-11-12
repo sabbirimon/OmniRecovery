@@ -18,7 +18,7 @@
         <button class="nav-button" data-view="scan"><span class="nav-icon" aria-hidden="true">⌕</span>Scan media</button>
         <button class="nav-button" data-view="capture"><span class="nav-icon" aria-hidden="true">⊞</span>Capture &amp; clone</button>
         <button class="nav-button" data-view="compare"><span class="nav-icon" aria-hidden="true">⇄</span>Compare captures</button>
-        <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span>Repair media</button>
+        <button class="nav-button" data-view="repair"><span class="nav-icon" aria-hidden="true">✚</span>Repair files</button>
         <button class="nav-button" data-view="transfer"><span class="nav-icon" aria-hidden="true">↗</span>Phone clone</button>
         <button class="nav-button" data-view="forensics"><span class="nav-icon" aria-hidden="true">◎</span>Forensics</button>
         <button class="nav-button" data-view="security"><span class="nav-icon" aria-hidden="true">◇</span>Security scan</button>
@@ -26,7 +26,7 @@
         <button class="nav-button" data-view="sanitize"><span class="nav-icon" aria-hidden="true">△</span>Sanitize</button>
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span>Automation</button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.0</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.2</span></div>
     </aside>
 
     <main>
@@ -41,8 +41,8 @@
         <div class="tool-grid">
           <button class="tool-tile" data-jump="scan" data-scan-source="android_export"><span class="tile-icon">↓</span><strong>Phone export import</strong><span>Review files from Android or iOS exports by category.</span></button>
           <button class="tool-tile" data-jump="transfer"><span class="tile-icon">↗</span><strong>Phone clone</strong><span>Package selected files for a receiving Android phone.</span></button>
-          <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Verify an acquired file against a reference SHA-256.</span></button>
-          <button class="tool-tile" data-jump="repair"><span class="tile-icon">✚</span><strong>Repair media</strong><span>Assess supported PNG and JPEG corruption.</span></button>
+          <button class="tool-tile" data-jump="forensics"><span class="tile-icon">◎</span><strong>Forensics</strong><span>Run evidence scans, verification, and phone-export review.</span></button>
+          <button class="tool-tile" data-jump="repair"><span class="tile-icon">✚</span><strong>Repair files</strong><span>Assess supported photo, video, audio, and Office file damage.</span></button>
           <button class="tool-tile" data-jump="security"><span class="tile-icon">◇</span><strong>Security scan</strong><span>Check a local sample or review security log indicators.</span></button>
           <button class="tool-tile" data-jump="logs"><span class="tile-icon">≡</span><strong>Scan logs</strong><span>View, export, delete, or restore activity logs.</span></button>
           <button class="tool-tile" data-jump="compare"><span class="tile-icon">⇄</span><strong>Compare captures</strong><span>Review changes between earlier and later observations.</span></button>
@@ -61,27 +61,28 @@
         <header><h1 id="scan-title">Scan media</h1><p>Choose a source and the file types you want to inspect.</p></header>
         <section class="card source-switch"><label>Source<select id="scan-source"><option value="image">Disk image</option><option value="folder">Folder</option><option value="file">Single file</option><option value="volume">Active mounted volume</option><option value="android_export">Android export folder</option><option value="ios_export">iOS export folder</option></select></label></section>
         <div id="image-scan">
-        <section class="card source-card" aria-label="Image source">
-          <div class="section-top"><div><h2>Image source</h2><p id="image-name" class="selection">Choose an existing image file.</p></div><div class="actions"><button data-action id="pick-image">Choose image</button><button data-action id="demo-image">Try demo</button></div></div>
+        <section class="card source-card" aria-label="Disk image source">
+          <div class="section-top"><div><h2>Disk image source</h2><p id="image-name" class="selection">Choose a raw or Android sparse disk image.</p></div><div class="actions"><button data-action id="pick-image">Choose disk image</button><button data-action id="demo-image">Try demo</button></div></div>
           <div class="scan-options">
-            <label>Storage type<select id="storage"><option value="auto">Unspecified</option><option value="memory-card">Memory card</option><option value="hdd">Hard disk</option><option value="ssd">SSD / NVMe</option><option value="ufs">UFS</option><option value="emmc">eMMC</option><option value="usb-flash">USB flash</option><option value="optical">Optical</option><option value="virtual-disk">Virtual disk</option><option value="other">Other</option></select></label>
-            <label>Media to scan<select id="scan-media"><option value="">JPEG and PNG</option><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
+            <label>Storage type<select id="storage"><option value="auto">Unspecified</option><option value="memory-card">Memory card</option><option value="hdd">Hard disk</option><option value="ssd">SSD / NVMe</option><option value="ufs">UFS</option><option value="emmc">eMMC</option><option value="usb-flash">USB flash</option><option value="optical">Optical</option><option value="camera">Camera storage</option><option value="iot">IoT device storage</option><option value="virtual-disk">Virtual disk</option><option value="other">Other</option></select></label>
+            <label>Media to scan<select id="scan-media"><option value="">All supported media</option><optgroup label="Photos"><option value="jpeg">JPEG photo</option><option value="png">PNG photo</option></optgroup><optgroup label="Video"><option value="mp4">MP4 video</option><option value="mov">MOV video</option></optgroup><optgroup label="Audio"><option value="wav">WAV audio (PCM)</option></optgroup></select></label>
             <details><summary>Scan a byte range</summary><div class="range"><label>Offset<input id="offset" inputmode="numeric" placeholder="0"></label><label>Length<input id="length" inputmode="numeric" placeholder="To end of image"></label></div></details>
-            <button class="primary" data-action id="start-scan" disabled>Scan image</button>
+            <button class="primary" data-action id="start-scan" disabled>Scan disk image</button>
           </div>
           <details class="card output-card" id="source-hex-panel"><summary>Inspect source bytes</summary><div class="filters"><label>Logical offset<input id="hex-offset" inputmode="numeric" placeholder="0"></label><label>Bytes<input id="hex-length" inputmode="numeric" placeholder="64"></label><button data-action id="read-hex">Read bytes</button></div><pre id="source-hex" hidden></pre></details>
         </section>
         <section id="scan-output" hidden aria-label="Scan findings">
           <div class="metrics" id="scan-metrics"></div>
+          <p class="muted" id="scan-triage"></p>
           <div class="columns">
             <section class="card findings">
               <div class="section-top"><h2>Findings</h2><button data-action id="save-scan-report">Save report</button></div>
-              <div class="filters"><label>Type<select id="type-filter"><option value="">All media</option><option value="png">PNG</option><option value="jpeg">JPEG</option></select></label><label>Source origin<select id="origin-filter"><option value="">Any origin</option><option value="listed_partition">Listed partition</option><option value="backup_gpt_candidate">Backup GPT candidate</option><option value="image_unassigned">Unassigned image bytes</option></select></label><label>Sort<select id="sort-findings"><option value="offset">Source offset</option><option value="length">Size</option><option value="confidence">Confidence</option></select></label></div>
+              <div class="filters"><label>Type<select id="type-filter"><option value="">All media</option><option value="jpeg">JPEG</option><option value="png">PNG</option><option value="mp4">MP4</option><option value="mov">MOV</option><option value="wav">WAV</option></select></label><label>Source origin<select id="origin-filter"><option value="">Any origin</option><option value="listed_partition">Listed partition</option><option value="backup_gpt_candidate">Backup GPT candidate</option><option value="image_unassigned">Unassigned image bytes</option></select></label><label>Sort<select id="sort-findings"><option value="offset">Source offset</option><option value="length">Size</option><option value="confidence">Confidence</option></select></label></div>
               <div class="table-wrap"><table><thead><tr><th>Media</th><th>Offset</th><th>Size</th><th>Confidence</th></tr></thead><tbody id="findings"></tbody></table></div>
               <p id="no-findings" class="muted" hidden>No findings match this filter.</p>
             </section>
             <section class="card preview" aria-label="Finding preview">
-              <div class="section-top"><h2>Preview</h2><button class="primary" data-action id="save-finding" disabled hidden>Save image</button></div>
+              <div class="section-top"><h2>Preview</h2><button class="primary" data-action id="save-finding" disabled hidden>Save recovered file</button></div>
               <div class="picture"><p id="preview-message">Select a finding to inspect it.</p><img id="finding-image" alt="Verified recovered media" hidden></div>
               <dl id="finding-detail"></dl>
               <details id="finding-hex-detail" hidden><summary>First 256 bytes</summary><pre id="finding-hex"></pre></details>
@@ -102,11 +103,11 @@
       </section>
 
       <section id="capture" class="view" aria-labelledby="capture-title" hidden>
-        <header><h1 id="capture-title">Capture &amp; clone</h1><p>Take a before snapshot, take an after snapshot, then compare them.</p></header>
-        <section class="card"><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a source to capture.</p>
-          <div class="source-pair"><div><h2>Before capture</h2><p class="muted" id="before-capture-state">No capture saved.</p><button data-action id="capture-before">Capture before</button></div><div><h2>After capture</h2><p class="muted" id="after-capture-state">No capture saved.</p><button data-action id="capture-after">Capture after</button></div></div>
-          <div class="actions device-actions"><button class="primary" data-action id="compare-saved-captures">Compare saved captures</button><button data-action id="clone-image" hidden>Clone image file</button></div>
-          <p class="muted">Snapshots save hashes and file observations locally. Cloning an existing image saves its bytes to a separate physical drive.</p>
+        <header><h1 id="capture-title">Capture &amp; clone</h1><p>Choose a source to enable the Before and After capture buttons.</p></header>
+        <section class="card"><div class="section-top"><label>Source type<select id="capture-source-kind"><option value="folder">Folder or phone export</option><option value="image">Existing disk image</option></select></label><button class="primary" data-action id="pick-capture-source">Choose source</button></div><p id="capture-source-name" class="selection">Choose a folder or phone export to begin.</p>
+          <div class="source-pair"><div><h2>Before capture</h2><p class="muted" id="before-capture-state">No capture saved.</p><button class="primary" data-action id="capture-before">Capture before</button></div><div><h2>After capture</h2><p class="muted" id="after-capture-state">No capture saved.</p><button data-action id="capture-after">Capture after</button></div></div>
+          <div class="actions device-actions"><button data-action id="compare-saved-captures">Compare saved captures</button><button data-action id="clone-image" hidden>Clone image file</button></div>
+          <p class="muted">Snapshots save hashes and observations. On macOS, choose <strong>Existing disk image</strong> to clone an image file to a separate physical drive.</p>
         </section>
       </section>
 
@@ -122,9 +123,9 @@
       </section>
 
       <section id="repair" class="view" aria-labelledby="repair-title" hidden>
-        <header><h1 id="repair-title">Repair damaged media</h1><p>Assess supported PNG and JPEG damage and preview a verified derivative.</p></header>
-        <section class="card"><div class="section-top"><div><h2>Damaged file</h2><p id="damaged-name" class="selection">Choose a standalone PNG or JPEG.</p></div><button data-action id="pick-damaged">Choose file</button></div><label class="field">Original SHA-256 <span class="muted">Required for JPEG and PNG pixel-data repair</span><input id="original-hash" type="text" autocomplete="off" spellcheck="false" maxlength="64" placeholder="Optional for PNG ending repair"></label><button class="primary" data-action id="start-repair" disabled>Assess repair</button></section>
-        <section class="card output-card" id="repair-output" hidden><div class="section-top"><h2>Assessment</h2><div class="actions"><button data-action id="save-repair-report">Save report</button><button class="primary" data-action id="save-repaired" hidden>Save repaired image</button></div></div><dl id="repair-detail"></dl><div class="picture" id="repair-picture" hidden><img id="repair-image" alt="Verified repaired media"></div></section>
+        <header><h1 id="repair-title">Repair damaged files</h1><p>Check a file for repairable damage and save a separate verified copy.</p></header>
+        <section class="card"><div class="section-top"><div><h2>Damaged file</h2><p id="damaged-name" class="selection">Choose a JPEG, PNG, MP4, MOV, PCM WAV, DOCX, XLSX, or PPTX file.</p></div><button data-action id="pick-damaged">Choose file</button></div><label class="field">Original SHA-256 <span class="muted">Required for repairs other than the PNG end marker.</span><input id="original-hash" type="text" autocomplete="off" spellcheck="false" maxlength="64" placeholder="Hash of the file before it was damaged"></label><button class="primary" data-action id="start-repair" disabled>Assess repair</button></section>
+        <section class="card output-card" id="repair-output" hidden><div class="section-top"><h2>Assessment</h2><div class="actions"><button data-action id="save-repair-report">Save report</button><button class="primary" data-action id="save-repaired" hidden>Save repaired file</button></div></div><dl id="repair-detail"></dl><div class="picture" id="repair-picture" hidden><img id="repair-image" alt="Verified repaired image"></div></section>
       </section>
 
       <section id="transfer" class="view" aria-labelledby="transfer-title" hidden>
@@ -137,9 +138,11 @@
       </section>
 
       <section id="forensics" class="view" aria-labelledby="forensics-title" hidden>
-        <header><h1 id="forensics-title">Forensics</h1><p>Verify a previously acquired image or file in two read passes.</p></header>
-        <section class="card"><div class="section-top"><div><h2>Evidence file</h2><p class="selection" id="evidence-name">Choose an existing image or regular file.</p></div><button data-action id="pick-evidence">Choose file</button></div><div class="passwords"><label>Case reference<input id="case-reference" maxlength="128" placeholder="Optional case or item identifier"></label><label>Expected SHA-256<input id="evidence-sha" maxlength="64" placeholder="Optional trusted digest"></label></div><button data-action class="primary" id="verify-evidence">Verify SHA-256</button></section>
-        <section class="card output-card" id="evidence-output" hidden><div class="section-top"><h2>Verification report</h2><button data-action id="save-evidence-report">Save report</button></div><dl id="evidence-detail"></dl><p class="muted">This standalone report is unsigned.</p></section>
+        <header class="section-top"><div><h1 id="forensics-title">Forensics</h1><p>Inspect and verify previously acquired evidence.</p></div><div class="actions"><button class="jump-button" data-jump="capture">Before &amp; After</button><button class="jump-button" data-jump="logs">Activity logs</button></div></header>
+        <section class="card"><div class="section-top"><div><h2>Evidence source</h2><p class="selection" id="evidence-name">Choose an acquired disk image or regular file.</p></div><button class="primary" data-action id="pick-evidence">Choose evidence file</button></div><div class="passwords"><label>Case reference<input id="case-reference" maxlength="128" placeholder="Optional case or item identifier"></label><label>Expected SHA-256 for verification<input id="evidence-sha" maxlength="64" placeholder="Optional trusted digest"></label></div><div class="actions device-actions"><button data-action id="verify-evidence">Verify SHA-256</button><button data-action id="clone-evidence" hidden>Clone acquired image</button></div></section>
+        <section class="card output-card"><h2>Scan acquired disk image</h2><div class="scan-options"><label>Media to scan<select id="evidence-media"><option value="">All supported media</option><option value="jpeg">JPEG photo</option><option value="png">PNG photo</option><option value="mp4">MP4 video</option><option value="mov">MOV video</option><option value="wav">WAV audio (PCM)</option></select></label><label>Byte offset<input id="evidence-offset" inputmode="numeric" placeholder="0"></label><label>Byte length<input id="evidence-length" inputmode="numeric" placeholder="To end of image"></label><button data-action class="primary" id="scan-evidence">Run forensic scan</button></div></section>
+        <section class="card output-card" id="evidence-output" hidden><div class="section-top"><h2 id="evidence-report-title">Evidence report</h2><button data-action id="save-evidence-report">Export JSON report</button></div><dl id="evidence-detail"></dl><p class="muted">This standalone report is unsigned.</p></section>
+        <section class="card output-card"><div class="section-top"><div><h2>Review phone exports</h2><p>Find exported SMS, calls, contacts, mail, WhatsApp, Messenger, and device information by filename.</p></div><div class="actions"><button class="jump-button" data-jump="scan" data-scan-source="android_export">Android export</button><button class="jump-button" data-jump="scan" data-scan-source="ios_export">iOS export</button></div></div></section>
       </section>
 
       <section id="security" class="view" aria-labelledby="security-title" hidden>

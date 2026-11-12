@@ -12,10 +12,12 @@ Rows below describe engineering targets. The current [Android development CLI](a
 | `ufs`, `emmc` | Existing readable phone partition dump, or a supported Android sparse image |
 | `usb-flash` | Raw thumb-drive image |
 | `optical` | Sector image containing readable optical-disc bytes |
+| `camera` | Readable image of a camera card, recorder drive or internal storage acquired separately |
+| `iot` | Readable raw or Android sparse image acquired from a compatible embedded device |
 | `virtual-disk` | Flat raw export of a virtual disk |
 | `auto`, `other` | Unspecified storage or an otherwise supported raw image |
 
-These are provenance labels. `auto` leaves the physical medium unspecified. The scanner identifies the input container and applies the same JPEG/PNG validation across profiles. It accepts regular files. Live media access, RAID assembly, E01, AFF4, QCOW2, VHD/VHDX and VMDK parsing are future work. A raw export is scanned according to the bytes it contains.
+These are provenance labels. `auto` leaves the physical medium unspecified. The scanner identifies the input container and applies the same JPEG, PNG, supported MP4/MOV and PCM WAV validation across profiles. It accepts regular files. Live media access, RAID assembly, E01, AFF4, QCOW2, VHD/VHDX and VMDK parsing are future work. A raw export is scanned according to the bytes it contains.
 
 Use `--offset` and `--length` to limit carving to a known partition or region without making another image copy. The report includes the exact selected range, absolute logical offsets, skipped bytes inside that range and a SHA-256 of the full input. Filesystem signature hints, if present, are relative to the selected range start. Device discard, firmware remapping and missing encryption keys can limit the bytes visible in an acquired image. [Linux discard documentation](https://man7.org/linux/man-pages/man8/fstrim.8.html), [Android metadata encryption](https://source.android.com/docs/security/features/encryption/metadata)
 
@@ -46,8 +48,8 @@ Standard `adb` uses a local client/server architecture. The strict air-gap profi
 | F2FS, APFS, HFS+ | Versioned metadata adapters with explicit feature flags | F2FS node/segment recovery and APFS snapshot analysis depend on surviving metadata, keys and filesystem variant. Journal and snapshot handling preserve the source | F2FS Phase 4, APFS/HFS+ Phase 5 |
 | XFS, Btrfs, ZFS, YAFFS2, UBIFS | Research and evaluate supported read-only adapters and known-answer images | Best-effort candidates with format-specific constraints. Raw NAND often needs device-specific ECC, OOB layout and controller mapping | Phase 6 evaluation |
 | BitLocker, FileVault, LUKS, VeraCrypt, Android FBE/FDE | Detection where supported, explicit user-provided credentials and verified read-only decrypt adapters | Some encrypted volumes lack recognizable signatures. Key availability, hardware binding and device state govern what can be read. No password cracking or device lock bypass | Phases 4–5 |
-| JPEG, PNG, MP4, MP3 | Bound signature candidates, validate structure and decode with isolated workers | Report byte ranges and truncation. Preserve false-positive and ambiguous outcomes in validation metrics | Phase 2 |
-| HEIF/HEIC, camera RAW, GIF/WebP, MOV/3GP/MKV/AVI, AAC/M4A/FLAC/WAV/OGG/Opus | Format-specific validators, fragment reconstruction, isolated decode and optional reference-assisted repair | Keep original fragments and derivative linkage. Any reconstructed bytes or headers must be identified by provenance. Mark uncertain assembly as partial or unverified | Phase 6 |
+| JPEG, PNG, MP4, MOV, PCM WAV | Bound signature candidates. Decode photos and check the structure of supported video and WAV containers | Report byte ranges, SHA-256 and truncation. MP4, MOV and WAV have structural validation only | Development support |
+| HEIF/HEIC, camera RAW, GIF/WebP, 3GP/MKV/AVI, MP3/AAC/M4A/FLAC/OGG/Opus | Format-specific validators, fragment reconstruction, isolated decode and optional reference-assisted repair | Keep original fragments and derivative linkage. Any reconstructed bytes or headers must be identified by provenance. Mark uncertain assembly as partial or unverified | Phase 6 |
 | SQLite and app artifacts | Preserve database, WAL and journal separately, then parse cloned snapshots, freelists and unallocated pages | Validate page structure, WAL salts/checksums and committed frame boundaries. Candidates from stale or uncommitted bytes carry separate provenance and a lower confidence classification | Phase 4 |
 | Timeline, metadata, keyword search, OCR, perceptual hash and hash sets | Derive from approved case bytes with sandboxed parsers, bounded search and optional local inference | Preserve source and time zone for timestamps. Hash matches and model suggestions remain attributable observations. User-supplied hash sets and local model packages are versioned | Phases 3, 6 |
 

@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "omnirecovery"
-version = "0.3.0"
+version = "0.3.2"
 dependencies = [
  "aes-gcm",
  "clap",
@@ -434,6 +434,7 @@ dependencies = [
  "getrandom 0.4.3",
  "image",
  "libc",
+ "memchr",
  "pbkdf2",
  "rpassword",
  "serde",

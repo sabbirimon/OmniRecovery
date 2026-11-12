@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use omnirecovery::{ScanOptions, StorageProfile};
+use omnirecovery::{MediaType, ScanOptions, StorageProfile};
 use zeroize::Zeroizing;
 
 #[derive(Parser)]
@@ -24,6 +24,9 @@ enum Command {
         /// Record the original storage type supplied by the operator.
         #[arg(long, value_enum, default_value = "auto")]
         storage: StorageProfile,
+        /// Scan only this media type. By default scan all supported formats.
+        #[arg(long, value_enum)]
+        media: Option<MediaType>,
         /// Start at this zero-based logical byte offset.
         #[arg(long, default_value_t = 0)]
         offset: u64,
@@ -37,7 +40,7 @@ enum Command {
     Inventory { directory: PathBuf },
     /// Compare the paths and content hashes in two previously acquired exports.
     CompareExports { before: PathBuf, after: PathBuf },
-    /// Preview a deterministic repair of a damaged standalone PNG or JPEG.
+    /// Preview a bounded repair of a damaged standalone media or Office file.
     Repair {
         file: PathBuf,
         /// Original SHA-256 from a trusted backup or manifest.
@@ -115,16 +118,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Scan {
             image,
             storage,
+            media,
             offset,
             length,
         } => {
-            let report = omnirecovery::scan_with_options(
+            let report = omnirecovery::scan_selected_media(
                 &image,
                 ScanOptions {
                     storage,
                     offset,
                     length,
                 },
+                media,
             )?;
             serde_json::to_writer_pretty(&mut output, &report)?;
         }

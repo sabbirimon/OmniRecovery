@@ -20,6 +20,12 @@ pub enum FileCategory {
     Log,
     Contact,
     Message,
+    CallHistory,
+    ChatHistory,
+    Whatsapp,
+    Messenger,
+    Mail,
+    DeviceInfo,
     Database,
     Account,
     Browser,
@@ -154,8 +160,11 @@ fn include(
     query: &str,
 ) {
     let category = classify(&path);
-    if filter.is_none_or(|requested| requested == category)
-        && (query.is_empty() || path.to_lowercase().contains(query))
+    if filter.is_none_or(|requested| {
+        requested == category
+            || requested == FileCategory::Message
+                && matches!(category, FileCategory::CallHistory | FileCategory::Mail)
+    }) && (query.is_empty() || path.to_lowercase().contains(query))
     {
         report.entries.push(CatalogueEntry {
             path,
@@ -167,8 +176,83 @@ fn include(
 
 fn classify(path: &str) -> FileCategory {
     use FileCategory::*;
-    let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
-    let (base, extension) = name.rsplit_once('.').unwrap_or((&name, ""));
+    let path = path.to_ascii_lowercase();
+    let name = path.rsplit('/').next().unwrap_or(&path);
+    let (base, extension) = name.rsplit_once('.').unwrap_or((name, ""));
+    let text_export = matches!(extension, "json" | "csv" | "xml" | "txt");
+    let record_export = text_export
+        || matches!(
+            extension,
+            "html"
+                | "htm"
+                | "db"
+                | "db-wal"
+                | "sqlite"
+                | "sqlite3"
+                | "sqlitedb"
+                | "sqlite-wal"
+                | "storedata"
+                | "plist"
+        );
+    let starts = |prefixes: &[&str]| prefixes.iter().any(|prefix| base.starts_with(prefix));
+    let in_folder = |folders: &[&str]| {
+        path.split('/')
+            .rev()
+            .skip(1)
+            .any(|part| folders.contains(&part))
+    };
+    if (record_export || extension.starts_with("crypt"))
+        && (starts(&["whatsapp", "msgstore"]) || in_folder(&["whatsapp", "com.whatsapp"]))
+    {
+        return Whatsapp;
+    }
+    if record_export
+        && (starts(&["messenger", "facebook-messages", "facebook_messages"])
+            || in_folder(&["messenger", "com.facebook.orca"])
+            || path.contains("facebook/messages/"))
+    {
+        return Messenger;
+    }
+    if record_export
+        && starts(&[
+            "callhistory",
+            "call_history",
+            "call-history",
+            "calllog",
+            "call_log",
+            "call-log",
+            "calls",
+        ])
+    {
+        return CallHistory;
+    }
+    if record_export && starts(&["contacts", "addressbook", "address_book"]) {
+        return Contact;
+    }
+    if record_export && starts(&["sms", "mms", "mmssms", "messages"]) {
+        return Message;
+    }
+    if record_export && starts(&["chat_history", "chat-history", "telegram", "signal-chat"]) {
+        return ChatHistory;
+    }
+    if record_export
+        && starts(&[
+            "imei",
+            "device-info",
+            "device_info",
+            "device-identifiers",
+            "device_identifiers",
+            "hardware-info",
+            "hardware_info",
+        ])
+    {
+        return DeviceInfo;
+    }
+    if (record_export && starts(&["mail-export", "mail_export", "mail-history", "mail_history"]))
+        || matches!(extension, "eml" | "mbox" | "emlx" | "pst" | "ost")
+    {
+        return Mail;
+    }
     if matches!(extension, "json" | "csv" | "xml" | "txt")
         && (base == "accounts"
             || base.starts_with("accounts-")
@@ -182,13 +266,6 @@ fn classify(path: &str) -> FileCategory {
             .any(|part| base.contains(part))
     {
         return Browser;
-    }
-    if matches!(extension, "json" | "csv" | "xml" | "txt")
-        && ["sms", "messages", "calls", "calllog"]
-            .iter()
-            .any(|part| base.starts_with(part))
-    {
-        return Message;
     }
     if matches!(extension, "txt" | "json" | "csv" | "xml")
         && ["logcat", "dumpsys", "syslog", "log-", "security-log"]
@@ -205,7 +282,6 @@ fn classify(path: &str) -> FileCategory {
         "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "odt" | "ods" | "txt"
         | "rtf" | "md" | "json" | "csv" | "xml" | "html" => Document,
         "vcf" | "vcard" => Contact,
-        "eml" | "mbox" => Message,
         "log" | "evtx" | "ips" | "crash" | "trace" => Log,
         "db" | "db-wal" | "sqlite" | "sqlite3" | "sqlite-wal" => Database,
         "zip" | "tar" | "gz" | "7z" | "rar" | "ab" | "apk" | "omnibackup" => Archive,

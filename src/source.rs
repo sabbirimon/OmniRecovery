@@ -1,5 +1,6 @@
 use std::fs::{self, File, Metadata, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
+use std::ops::Range;
 use std::path::Path;
 
 use serde::Serialize;
@@ -71,6 +72,14 @@ pub(crate) fn same_file_state(before: &Metadata, after: &Metadata) -> bool {
 }
 
 pub(crate) fn hash_image(file: &mut File, size: u64) -> io::Result<String> {
+    hash_image_with(file, size, |_, _| {})
+}
+
+pub(crate) fn hash_image_with(
+    file: &mut File,
+    size: u64,
+    mut observed: impl FnMut(u64, &[u8]),
+) -> io::Result<String> {
     file.seek(SeekFrom::Start(0))?;
     let mut reader = file.take(size.saturating_add(1));
     let mut digest = Sha256::new();
@@ -81,8 +90,10 @@ pub(crate) fn hash_image(file: &mut File, size: u64) -> io::Result<String> {
         if count == 0 {
             break;
         }
+        let bytes = &buffer[..count];
+        digest.update(bytes);
+        observed(read_bytes, bytes);
         read_bytes += count as u64;
-        digest.update(&buffer[..count]);
     }
     if read_bytes != size {
         return Err(invalid("image length changed while reading"));
@@ -295,6 +306,24 @@ impl Layout {
                 "requested bytes are outside observed image extents",
             ))
         }
+    }
+
+    pub(crate) fn physical_ranges(&self, mut offset: u64, end: u64) -> io::Result<Vec<Range<u64>>> {
+        let mut ranges = Vec::new();
+        let first = self.raw.partition_point(|extent| extent.end <= offset);
+        for extent in &self.raw[first..] {
+            if offset < extent.start || offset == end {
+                break;
+            }
+            let next = end.min(extent.end);
+            let start = extent.file_start + (offset - extent.start);
+            ranges.push(start..start + (next - offset));
+            offset = next;
+        }
+        if offset != end {
+            return Err(invalid("candidate crosses an unobserved range"));
+        }
+        Ok(ranges)
     }
 }
 

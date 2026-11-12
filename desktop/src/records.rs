@@ -51,6 +51,11 @@ pub fn record(
                 "matches_reference",
                 "stage",
                 "kind",
+                "case_reference",
+                "elapsed_ms",
+                "observed_ranges_fully_scanned",
+                "media_filter",
+                "readback_verified",
                 "entries_count",
             ] {
                 if let Some(value) = report.get(key).filter(|value| {
@@ -75,10 +80,10 @@ pub fn record(
         operation: operation.into(),
         started_ms,
         finished_ms: now(),
-        outcome: if result.is_ok() {
-            "completed"
-        } else {
-            "failed"
+        outcome: match result {
+            Ok(value) if value["status"] == "cancelled" => "cancelled",
+            Ok(_) => "completed",
+            Err(_) => "failed",
         },
         summary,
     };

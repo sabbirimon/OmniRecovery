@@ -6,13 +6,15 @@ OmniRecovery is an offline-first media recovery and forensic inspection toolkit 
 
 [Visual guide](docs/visual-guide.md) · [User manual](docs/user-manual.md) · [Capability matrix](docs/capabilities.md) · [MIT license](LICENSE)
 
+[Requests and progress](docs/feature-status.md) · [Dr.Fone inventory](docs/drfone-feature-inventory.md) · [3uTools inventory](docs/3utools-feature-inventory.md)
+
 **Project status.** Development release. This build handles previously acquired images and locally accessible files. Live phone acquisition, the forensic case vault, approval enforcement, remote agent pairing, and destructive sanitization execution remain separate milestones.
 
 ## Open the desktop app
 
 Get the macOS Universal DMG, Windows x64 desktop and CLI executables, and Android companion APK from the GitHub release when available. On macOS, open the DMG and drag **OmniRecovery** into **Applications**. The icon is a white ring with teal data tiles on a navy square. The macOS bundle is ad hoc signed and unnotarized. The Android APK is debug signed.
 
-Open **Toolbox → Scan media → Try demo** to scan a synthetic image and view its JPEG and PNG findings. Use **Devices & storage** for macOS disk and USB inventory, **Capture & clone** to save a before/after pair, and **Phone clone** to transfer selected files to Android. On macOS, saving recovered media requires a verified separate physical drive. See the [desktop guide](docs/desktop.md).
+Open **Toolbox → Scan media → Try demo** to scan a synthetic image and review its JPEG, PNG, MP4 and WAV findings. Use **Devices & storage** for macOS disk and USB inventory, **Capture & clone** to save a before/after pair, and **Phone clone** to transfer selected files to Android. On macOS, saving recovered media requires a verified separate physical drive. See the [desktop guide](docs/desktop.md).
 
 ## Try the development CLI
 
@@ -33,7 +35,7 @@ From source, with Rustup available, build using `cargo build --release --locked`
 ./target/release/omnirecovery verify userdata.img
 ```
 
-The image scan verifies the input SHA-256 before and after analysis and decodes contiguous JPEG and PNG candidates. Its JSON includes source offsets, lengths, digests, confidence reasons and skipped ranges. The Rust library can independently re-verify a finding and recover its exact bytes into memory. The CLI emits findings and comparisons. Evidence file export is a later case-service operation.
+The image scan verifies the input SHA-256 before and after analysis. It decodes contiguous JPEG and PNG and checks the container structure of supported MP4 and MOV video and PCM WAV audio. Use `--media mov` or `--media wav` to filter. The JSON includes source offsets, lengths, digests, offline triage counts, confidence reasons and skipped ranges. The Rust library verifies and recovers the exact reported byte range from a single full-source verification read.
 
 Run `omnirecovery scan --help` to list storage profiles and range options. `--storage` records the operator-supplied media type in JSON. Byte-range options limit carving, with offsets relative to the original logical image and SHA-256 covering the complete input file.
 

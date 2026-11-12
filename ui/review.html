@@ -49,7 +49,7 @@
         <div class="card">
           <h2>Findings</h2>
           <div class="filters">
-            <label>Type <select id="type"><option value="">All</option><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
+            <label>Type <select id="type"><option value="">All</option><option value="jpeg">JPEG</option><option value="png">PNG</option><option value="mp4">MP4</option><option value="mov">MOV</option><option value="wav">WAV</option></select></label>
             <label>Sort <select id="sort"><option value="offset">Offset</option><option value="length">Size</option><option value="confidence">Confidence</option></select></label>
           </div>
           <div class="rows"><table><thead><tr><th scope="col">Media</th><th scope="col">Offset</th><th scope="col">Bytes</th><th scope="col">Confidence</th></tr></thead><tbody id="findings"></tbody></table></div>
@@ -77,7 +77,7 @@
     function showFinding(item) {
       describe('detail', item ? [
         ['Media type', item.media_type.toUpperCase()], ['Byte offset', number(item.offset)],
-        ['Dimensions', number(item.width) + ' × ' + number(item.height)],
+        ...(item.width ? [['Dimensions', number(item.width) + ' × ' + number(item.height)]] : []),
         ['Validation', readable(item.reason)], ['SHA-256', typeof item.sha256 === 'string' ? item.sha256 : 'Unavailable']
       ] : [['Selection', 'No finding selected']]);
     }
@@ -116,7 +116,7 @@
         if (ticket !== load) return;
         if (!report || report.schema_version !== 1 || typeof report.source_sha256 !== 'string') throw new Error('Unsupported report.');
         if (Array.isArray(report.findings)) {
-          if (report.findings.length > 4096 || !report.findings.every(item => item && ['jpeg', 'png'].includes(item.media_type) && ['offset', 'length', 'confidence'].every(key => Number.isSafeInteger(item[key]) && item[key] >= 0))) throw new Error('Invalid findings.');
+          if (report.findings.length > 4096 || !report.findings.every(item => item && ['jpeg', 'png', 'mp4', 'mov', 'wav'].includes(item.media_type) && ['offset', 'length', 'confidence'].every(key => Number.isSafeInteger(item[key]) && item[key] >= 0))) throw new Error('Invalid findings.');
           results = report.findings;
           describe('stats', [['Validated findings', number(results.length)], ['Rejected candidates', number(report.rejected?.length)], ['Bytes scanned', number(report.observed_bytes_scanned)], ['Storage profile', readable(report.storage_profile)]]);
           byId('review').hidden = false;

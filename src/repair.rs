@@ -8,6 +8,8 @@ use sha2::{Digest, Sha256};
 use crate::media::{MAX_CANDIDATE_BYTES, MediaType, Validated};
 use crate::source::{hash_image, invalid, open_image, same_file_state};
 
+mod office;
+
 const IEND: &[u8] = b"\0\0\0\0IEND\xaeB\x60\x82";
 const MAX_BIT_REPAIR_CHUNK: usize = 4 * 1024 * 1024;
 
@@ -23,6 +25,8 @@ pub struct RepairReport {
     pub source_sha256: String,
     pub source_bytes: u64,
     pub media_type: Option<MediaType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_type: Option<&'static str>,
     pub expected_sha256: Option<String>,
     pub status: &'static str,
     pub reason: &'static str,
@@ -71,6 +75,7 @@ pub fn preview_repair(path: &Path, expected_sha256: Option<&str>) -> io::Result<
         source_sha256: digest(&input),
         source_bytes: state.len(),
         media_type: MediaType::detect(&input),
+        document_type: None,
         expected_sha256: expected,
         status: "unresolved",
         reason: "unsupported_format",
@@ -90,7 +95,9 @@ pub fn preview_repair(path: &Path, expected_sha256: Option<&str>) -> io::Result<
 }
 
 fn repair(input: &[u8], report: &mut RepairReport) -> Option<Vec<u8>> {
-    let media = report.media_type?;
+    let Some(media) = report.media_type else {
+        return repair_office(input, report);
+    };
     if let Some(validated) = validate_exact(media, input) {
         if report
             .expected_sha256
@@ -101,12 +108,17 @@ fn repair(input: &[u8], report: &mut RepairReport) -> Option<Vec<u8>> {
             return None;
         }
         report.status = "already_valid";
-        report.reason = "input_passed_structure_and_decode_checks";
+        report.reason = if media.is_photo() {
+            "input_passed_structure_and_decode_checks"
+        } else {
+            "input_passed_container_structure_checks"
+        };
         report.result = Some(result(
             &validated,
             report.source_sha256.clone(),
             report.expected_sha256.is_some(),
             None,
+            media.is_photo(),
         ));
         return None;
     }
@@ -118,9 +130,15 @@ fn repair(input: &[u8], report: &mut RepairReport) -> Option<Vec<u8>> {
             report.reason = "trusted_sha256_required_for_jpeg_repair";
             return None;
         }
+        MediaType::Wav if report.expected_sha256.is_some() => wav_trials(input),
+        MediaType::Mp4 | MediaType::Mov if report.expected_sha256.is_some() => movie_trials(input),
+        MediaType::Mp4 | MediaType::Mov | MediaType::Wav => {
+            report.reason = "trusted_sha256_required_for_container_repair";
+            return None;
+        }
     };
-    for (candidate, change) in trials {
-        let sha256 = digest(&candidate);
+    for trial in trials {
+        let sha256 = trial.digest(input);
         if report
             .expected_sha256
             .as_ref()
@@ -129,14 +147,15 @@ fn repair(input: &[u8], report: &mut RepairReport) -> Option<Vec<u8>> {
             report.reason = "no_repair_matches_reference_hash";
             continue;
         }
-        if let Some(validated) = validate_exact(media, &candidate) {
+        if let Some(validated) = validate_exact(media, &trial.pieces(input).concat()) {
             report.status = "repair_available";
             report.reason = "deterministic_repair_passed_validation";
             report.result = Some(result(
                 &validated,
                 sha256,
                 report.expected_sha256.is_some(),
-                Some(change),
+                Some(trial.change),
+                media.is_photo(),
             ));
             return Some(validated.bytes);
         }
@@ -149,6 +168,7 @@ fn result(
     sha256: String,
     matched: bool,
     change: Option<RepairChange>,
+    decoded: bool,
 ) -> RepairResult {
     RepairResult {
         sha256,
@@ -157,11 +177,206 @@ fn result(
         height: validated.height,
         verification: if matched {
             "trusted_sha256_match"
-        } else {
+        } else if decoded {
             "structure_and_decode"
+        } else {
+            "container_structure"
         },
         change,
     }
+}
+
+fn repair_office(input: &[u8], report: &mut RepairReport) -> Option<Vec<u8>> {
+    let directory = office::inspect(input)?;
+    report.document_type = Some(directory.extension);
+    let (bytes, change, sha256) = if let Some(fields) = directory.replacement {
+        let Some(expected) = &report.expected_sha256 else {
+            report.reason = "trusted_sha256_required_for_container_repair";
+            return None;
+        };
+        let trial = replace_field(
+            directory.fields,
+            &fields,
+            "office_restore_zip_directory_bounds",
+        );
+        let sha256 = trial.digest(input);
+        if sha256 != *expected {
+            report.reason = "no_repair_matches_reference_hash";
+            return None;
+        }
+        report.status = "repair_available";
+        report.reason = "deterministic_repair_passed_validation";
+        (
+            Some(trial.pieces(input).concat()),
+            Some(trial.change),
+            sha256,
+        )
+    } else {
+        if report
+            .expected_sha256
+            .as_ref()
+            .is_some_and(|expected| expected != &report.source_sha256)
+        {
+            report.reason = "input_does_not_match_reference_hash";
+            return None;
+        }
+        report.status = "already_valid";
+        report.reason = "input_passed_zip_directory_checks";
+        (None, None, report.source_sha256.clone())
+    };
+    report.result = Some(RepairResult {
+        sha256,
+        length: input.len() as u64,
+        width: 0,
+        height: 0,
+        verification: if report.expected_sha256.is_some() {
+            "trusted_sha256_match"
+        } else {
+            "zip_directory_structure"
+        },
+        change,
+    });
+    bytes
+}
+
+struct RepairTrial {
+    change: RepairChange,
+    replacement: Vec<u8>,
+}
+
+impl RepairTrial {
+    fn new(offset: usize, replaced: usize, value: &[u8], algorithm: &'static str) -> Self {
+        Self {
+            change: RepairChange {
+                offset: offset as u64,
+                replaced_bytes: replaced as u64,
+                inserted_bytes: value.len() as u64,
+                algorithm,
+            },
+            replacement: value.to_vec(),
+        }
+    }
+
+    fn pieces<'a>(&'a self, input: &'a [u8]) -> [&'a [u8]; 3] {
+        let start = self.change.offset as usize;
+        let end = start + self.change.replaced_bytes as usize;
+        [&input[..start], &self.replacement, &input[end..]]
+    }
+
+    fn digest(&self, input: &[u8]) -> String {
+        let mut digest = Sha256::new();
+        for piece in self.pieces(input) {
+            digest.update(piece);
+        }
+        format!("{:x}", digest.finalize())
+    }
+}
+
+fn replace_field(offset: usize, value: &[u8], algorithm: &'static str) -> RepairTrial {
+    RepairTrial::new(offset, value.len(), value, algorithm)
+}
+
+fn movie_trials(input: &[u8]) -> Vec<RepairTrial> {
+    let mut trials = Vec::new();
+    let algorithm = if input.get(8..12) == Some(b"qt  ") {
+        "mov_restore_final_atom_size"
+    } else {
+        "mp4_restore_final_box_size"
+    };
+    let mut offset = 0;
+    for _ in 0..256 {
+        let Some(header) = input.get(offset..offset + 8) else {
+            break;
+        };
+        let size = u32::from_be_bytes(header[..4].try_into().expect("box size")) as usize;
+        let remaining = input.len() - offset;
+        if matches!(&header[4..], b"moov" | b"mdat") && size != remaining && size != 1 {
+            trials.push(replace_field(
+                offset,
+                &(remaining as u32).to_be_bytes(),
+                algorithm,
+            ));
+            if trials.len() == 2 {
+                break;
+            }
+        }
+        if !(8..=remaining).contains(&size) {
+            break;
+        }
+        offset += size;
+    }
+    trials
+}
+
+fn wav_trials(input: &[u8]) -> Vec<RepairTrial> {
+    let mut trials = Vec::new();
+    let riff_size = ((input.len() - 8) as u32).to_le_bytes();
+    if input[4..8] != riff_size {
+        trials.push(replace_field(4, &riff_size, "wav_restore_riff_size"));
+    }
+    let mut offset = 12;
+    let mut has_format = false;
+    for _ in 0..256 {
+        let Some(header) = input.get(offset..offset + 8) else {
+            break;
+        };
+        let size = u32::from_le_bytes(header[4..].try_into().expect("chunk size")) as usize;
+        let payload = offset + 8;
+        if &header[..4] == b"data" && has_format {
+            let available = input.len() - payload;
+            // The data chunk may end in a single zero byte of RIFF padding.
+            for length in [
+                Some(available),
+                available.checked_sub(1).filter(|_| input.ends_with(&[0])),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if length != size && length != 0 {
+                    trials.push(replace_field(
+                        offset + 4,
+                        &(length as u32).to_le_bytes(),
+                        "wav_restore_terminal_data_size",
+                    ));
+                }
+            }
+            break;
+        }
+        let Some(next) = payload
+            .checked_add(size)
+            .and_then(|end| end.checked_add(size % 2))
+            .filter(|&end| end <= input.len())
+        else {
+            break;
+        };
+        if &header[..4] == b"fmt " && matches!(size, 16 | 18) && !has_format {
+            has_format = true;
+            let format = &input[payload..payload + size];
+            let channels = u16::from_le_bytes([format[2], format[3]]);
+            let bits = u16::from_le_bytes([format[14], format[15]]);
+            let rate = u32::from_le_bytes(format[4..8].try_into().expect("sample rate"));
+            if format[..2] == [1, 0]
+                && (1..=32).contains(&channels)
+                && matches!(bits, 8 | 16 | 24 | 32)
+                && let Some(byte_rate) = rate.checked_mul(u32::from(channels * (bits / 8)))
+            {
+                let alignment = (channels * (bits / 8)).to_le_bytes();
+                let byte_rate = byte_rate.to_le_bytes();
+                let mut fields = [0; 6];
+                fields[..4].copy_from_slice(&byte_rate);
+                fields[4..].copy_from_slice(&alignment);
+                if format[8..14] != fields {
+                    trials.push(replace_field(
+                        payload + 8,
+                        &fields,
+                        "wav_restore_pcm_rate_and_alignment",
+                    ));
+                }
+            }
+        }
+        offset = next;
+    }
+    trials
 }
 
 fn digest(bytes: &[u8]) -> String {
@@ -181,19 +396,11 @@ fn replace_suffix(
     start: usize,
     suffix: &[u8],
     algorithm: &'static str,
-) -> (Vec<u8>, RepairChange) {
-    (
-        [&input[..start], suffix].concat(),
-        RepairChange {
-            offset: start as u64,
-            replaced_bytes: (input.len() - start) as u64,
-            inserted_bytes: suffix.len() as u64,
-            algorithm,
-        },
-    )
+) -> RepairTrial {
+    RepairTrial::new(start, input.len() - start, suffix, algorithm)
 }
 
-fn jpeg_trials(input: &[u8]) -> Vec<(Vec<u8>, RepairChange)> {
+fn jpeg_trials(input: &[u8]) -> Vec<RepairTrial> {
     let mut trials = Vec::new();
     if input.ends_with(&[0xff]) {
         trials.push(replace_suffix(
@@ -212,7 +419,7 @@ fn jpeg_trials(input: &[u8]) -> Vec<(Vec<u8>, RepairChange)> {
     trials
 }
 
-fn png_trials(input: &[u8], has_reference: bool) -> Vec<(Vec<u8>, RepairChange)> {
+fn png_trials(input: &[u8], has_reference: bool) -> Vec<RepairTrial> {
     let mut offset = 8;
     let mut bad_idat = None;
     loop {
@@ -252,12 +459,7 @@ fn png_trials(input: &[u8], has_reference: bool) -> Vec<(Vec<u8>, RepairChange)>
     }
 }
 
-fn bit_trials(
-    input: &[u8],
-    start: usize,
-    length: usize,
-    syndrome: u32,
-) -> Vec<(Vec<u8>, RepairChange)> {
+fn bit_trials(input: &[u8], start: usize, length: usize, syndrome: u32) -> Vec<RepairTrial> {
     const POLYNOMIAL: u32 = 0xedb8_8320;
     let mut trials = Vec::new();
     let mut effect = POLYNOMIAL;
@@ -287,18 +489,8 @@ fn bit_trials(
     trials
 }
 
-fn flip(input: &[u8], offset: usize, mask: u8, algorithm: &'static str) -> (Vec<u8>, RepairChange) {
-    let mut bytes = input.to_vec();
-    bytes[offset] ^= mask;
-    (
-        bytes,
-        RepairChange {
-            offset: offset as u64,
-            replaced_bytes: 1,
-            inserted_bytes: 1,
-            algorithm,
-        },
-    )
+fn flip(input: &[u8], offset: usize, mask: u8, algorithm: &'static str) -> RepairTrial {
+    replace_field(offset, &[input[offset] ^ mask], algorithm)
 }
 
 fn chunk(tail: &[u8]) -> Option<(&[u8], &[u8], u32, usize)> {

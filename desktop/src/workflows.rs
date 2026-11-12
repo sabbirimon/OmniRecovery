@@ -1,6 +1,7 @@
 use super::*;
 use omnirecovery::FileCategory;
 use serde_json::json;
+use std::time::Instant;
 
 pub(super) fn tracked(
     app: &AppHandle,
@@ -260,8 +261,11 @@ fn copy_path(app: &AppHandle, source: &Path, filename: &str) -> Result<Option<Va
     let Some(path) = picked(path)? else {
         return Ok(None);
     };
-    let sha256 = destination::copy_file(source, &path)?;
-    Ok(Some(json!({"name":label(&path),"sha256":sha256})))
+    let started = Instant::now();
+    let (sha256, bytes) = destination::copy_file(source, &path)?;
+    Ok(Some(
+        json!({"name":label(&path),"sha256":sha256,"bytes":bytes,"elapsed_ms":started.elapsed().as_millis() as u64}),
+    ))
 }
 
 #[tauri::command]
@@ -318,6 +322,73 @@ pub(super) async fn compare_saved(
 }
 
 #[tauri::command]
+pub(super) async fn scan_evidence(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    case_reference: String,
+    offset: u64,
+    length: Option<u64>,
+    media: Option<MediaType>,
+) -> Result<Value, String> {
+    validate_case_reference(&case_reference)?;
+    let source = selected(&state, Source::Evidence)?;
+    let state = state.inner().clone();
+    work(move || {
+        tracked(&app, "forensic_image_scan", || {
+            let started = Instant::now();
+            let scan = omnirecovery::scan_selected_media(
+                &source,
+                ScanOptions {
+                    offset,
+                    length,
+                    ..ScanOptions::default()
+                },
+                media,
+            )
+            .map_err(error)?;
+            let mut value = serde_json::to_value(scan).map_err(error)?;
+            value["kind"] = json!("forensic_image_scan");
+            value["case_reference"] = json!(case_reference);
+            value["elapsed_ms"] = json!(started.elapsed().as_millis() as u64);
+            value["signed"] = json!(false);
+            report(&state, ReportKind::ForensicScan, value)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn clone_evidence(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    case_reference: String,
+) -> Result<Value, String> {
+    validate_case_reference(&case_reference)?;
+    let source = selected(&state, Source::Evidence)?;
+    let state = state.inner().clone();
+    work(move || {
+        tracked(&app, "forensic_image_clone", || {
+            let Some(mut value) = copy_path(&app, &source, "forensic-clone.dd")? else {
+                return Ok(json!({"status":"cancelled","case_reference":case_reference}));
+            };
+            value["kind"] = json!("forensic_image_clone");
+            value["case_reference"] = json!(case_reference);
+            value["readback_verified"] = json!(true);
+            value["signed"] = json!(false);
+            report(&state, ReportKind::EvidenceClone, value)
+        })
+    })
+    .await
+}
+
+fn validate_case_reference(case_reference: &str) -> Result<(), String> {
+    if case_reference.len() > 128 || case_reference.chars().any(char::is_control) {
+        return Err("Use a case reference of at most 128 bytes without control characters.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub(super) async fn verify_evidence(
     app: AppHandle,
     state: State<'_, Shared>,
@@ -329,9 +400,7 @@ pub(super) async fn verify_evidence(
     {
         return Err("Expected SHA-256 must contain 64 hexadecimal characters.".into());
     }
-    if case_reference.len() > 128 {
-        return Err("Case reference is too long.".into());
-    }
+    validate_case_reference(&case_reference)?;
     let source = selected(&state, Source::Evidence)?;
     let state = state.inner().clone();
     work(move || tracked(&app, "evidence_verification", || {

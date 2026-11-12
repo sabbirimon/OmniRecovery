@@ -120,6 +120,7 @@ function clearPreview() {
   el('finding-image').hidden = true;
   el('finding-image').removeAttribute('src');
   el('preview-message').hidden = false;
+  el('preview-message').textContent = 'Select a finding to inspect it.';
   el('finding-hex-detail').hidden = true;
   el('finding-hex-detail').open = false;
   el('finding-detail').replaceChildren();
@@ -149,6 +150,13 @@ async function scan() {
     ['Rejected candidates', number.format(scanReport.rejected.length)],
     ['Observed bytes scanned', size(scanReport.observed_bytes_scanned)],
   ]);
+  const triage = scanReport.triage;
+  el('scan-triage').textContent = [
+    `${number.format(triage.decode_verified)} decode-verified`,
+    `${number.format(triage.container_verified)} container-verified`,
+    ...(triage.needs_more_source ? [`${number.format(triage.needs_more_source)} cut short at a source boundary`] : []),
+    ...(triage.validation_limited ? [`${number.format(triage.validation_limited)} exceeded validation limits`] : []),
+  ].join(' · ');
   el('scan-output').hidden = false;
   renderFindings();
   const gaps = scanReport.fill_bytes_skipped + scanReport.unspecified_bytes_skipped;
@@ -189,17 +197,22 @@ async function preview(index) {
   const finding = scanReport.findings[index];
   const media = await invoke('preview_media', {repair: false, index});
   activeFinding = index;
-  el('finding-image').src = media.url;
-  el('finding-image').hidden = false;
-  el('preview-message').hidden = true;
+  if (media.url) {
+    el('finding-image').src = media.url;
+    el('finding-image').hidden = false;
+    el('preview-message').hidden = true;
+  } else {
+    el('preview-message').textContent = `${finding.media_type.toUpperCase()} verified against the source. Playback is unavailable here.`;
+  }
   el('finding-hex').textContent = media.hex;
   el('finding-hex-detail').hidden = false;
   describe('finding-detail', [
-    ['Dimensions', `${finding.width} × ${finding.height}`], ['Source offset', number.format(finding.offset)],
+    ...(finding.width ? [['Dimensions', `${finding.width} × ${finding.height}`]] : [['Size', size(finding.length)]]),
+    ['Source offset', number.format(finding.offset)],
     ['Source origin', originOf(finding) ? `${words(originOf(finding).provenance)} · ${originOf(finding).name}` : 'Unassigned image bytes', true],
     ['Validation', words(finding.reason), true], ['SHA-256', finding.sha256, true],
   ]);
-  return 'Preview verified against the source.';
+  return 'Finding verified against the source.';
 }
 
 pick('pick-image', 'image', 'image-name', resetScan);
@@ -278,15 +291,18 @@ el('start-repair').addEventListener('click', () => run('Checking file structure 
   resetRepair();
   repairReport = await invoke('repair_file', {expected: el('original-hash').value.trim() || null});
   describe('repair-detail', [
+    ['Format', (repairReport.media_type || repairReport.document_type || 'Unrecognized').toUpperCase()],
     ['Status', words(repairReport.status)], ['Reason', words(repairReport.reason)],
     ['Verification', words(repairReport.result?.verification)], ['Method', words(repairReport.result?.change?.algorithm)],
     ['Source SHA-256', repairReport.source_sha256, true],
   ]);
   el('repair-output').hidden = false;
   if (repairReport.status === 'repair_available') {
-    const media = await invoke('preview_media', {repair: true, index: 0});
-    el('repair-image').src = media.url;
-    el('repair-picture').hidden = false;
+    if (['jpeg', 'png'].includes(repairReport.media_type)) {
+      const media = await invoke('preview_media', {repair: true, index: 0});
+      el('repair-image').src = media.url;
+      el('repair-picture').hidden = false;
+    }
     el('save-repaired').hidden = !mediaSaving;
   }
   return 'Repair assessment finished.';

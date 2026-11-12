@@ -39,6 +39,32 @@ fn catalogue_categorizes_exports_and_searches_paths() {
 }
 
 #[test]
+fn catalogue_distinguishes_readable_phone_export_artifacts() {
+    let dir = tempdir().unwrap();
+    let cases = [
+        ("sms.db", FileCategory::Message),
+        ("CallHistory.storedata", FileCategory::CallHistory),
+        ("AddressBook.sqlitedb", FileCategory::Contact),
+        ("Inbox.mbox", FileCategory::Mail),
+        ("chat_history.json", FileCategory::ChatHistory),
+        ("WhatsApp/msgstore.db.crypt14", FileCategory::Whatsapp),
+        (
+            "facebook/messages/inbox/thread/message_1.json",
+            FileCategory::Messenger,
+        ),
+        ("IMEI.json", FileCategory::DeviceInfo),
+    ];
+    for (name, category) in cases {
+        let path = dir.path().join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, b"fixture").unwrap();
+        let report = catalogue(dir.path(), Some(category), name).unwrap();
+        assert_eq!(report.entries[0].category, category, "{name}");
+        assert_eq!(report.entries[0].path, name);
+    }
+}
+
+#[test]
 fn selected_phone_clone_packages_only_chosen_export_paths() {
     let dir = tempdir().unwrap();
     let source = dir.path().join("export");

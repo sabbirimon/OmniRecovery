@@ -65,6 +65,8 @@ enum ReportKind {
     Compare,
     Catalogue,
     Evidence,
+    ForensicScan,
+    EvidenceClone,
     Security,
     Sanitize,
 }
@@ -139,6 +141,15 @@ fn set_source(state: &Shared, slot: Source, path: PathBuf) -> Result<Selection, 
         Source::BeforeImage | Source::AfterImage | Source::BeforeFolder | Source::AfterFolder => {
             workspace.reports.remove(&ReportKind::Compare);
         }
+        Source::Evidence => {
+            for kind in [
+                ReportKind::Evidence,
+                ReportKind::ForensicScan,
+                ReportKind::EvidenceClone,
+            ] {
+                workspace.reports.remove(&kind);
+            }
+        }
         _ => {}
     }
     Ok(selection)
@@ -203,6 +214,10 @@ async fn demo_image(state: State<'_, Shared>) -> Result<Selection, String> {
             image.resize(8192, 0);
             image.extend_from_slice(include_bytes!("../assets/demo.jpg"));
             image.resize(16384, 0);
+            image.extend_from_slice(include_bytes!("../assets/demo.mp4"));
+            image.resize(20480, 0);
+            image.extend_from_slice(include_bytes!("../assets/demo.wav"));
+            image.resize(24576, 0);
             std::fs::write(&path, image).map_err(error)?;
         }
         set_source(&state, Source::Image, path)
@@ -358,13 +373,24 @@ impl Media {
         }
     }
 
-    fn media_type(&self) -> MediaType {
+    fn media_type(&self) -> Option<MediaType> {
         match self {
-            Self::Scan(job, index) => job.report.findings[*index].media_type,
-            Self::Repair(job) => job
-                .report
-                .media_type
-                .expect("verified repair has a media type"),
+            Self::Scan(job, index) => Some(job.report.findings[*index].media_type),
+            Self::Repair(job) => job.report.media_type,
+        }
+    }
+
+    fn extension(&self) -> &'static str {
+        match self.media_type() {
+            Some(MediaType::Jpeg) => "jpg",
+            Some(MediaType::Png) => "png",
+            Some(MediaType::Mp4) => "mp4",
+            Some(MediaType::Mov) => "mov",
+            Some(MediaType::Wav) => "wav",
+            None => match self {
+                Self::Repair(job) => job.report.document_type.expect("verified document format"),
+                Self::Scan(_, _) => unreachable!(),
+            },
         }
     }
 
@@ -396,7 +422,7 @@ impl Media {
 
 #[derive(Serialize)]
 struct MediaPreview {
-    url: String,
+    url: Option<String>,
     hex: String,
 }
 
@@ -410,11 +436,12 @@ async fn preview_media(
     work(move || {
         let bytes = media.read()?;
         let mime = match media.media_type() {
-            MediaType::Jpeg => "image/jpeg",
-            MediaType::Png => "image/png",
+            Some(MediaType::Jpeg) => Some("image/jpeg"),
+            Some(MediaType::Png) => Some("image/png"),
+            _ => None,
         };
         Ok(MediaPreview {
-            url: format!("data:{mime};base64,{}", STANDARD.encode(&bytes)),
+            url: mime.map(|mime| format!("data:{mime};base64,{}", STANDARD.encode(&bytes))),
             hex: hex_rows(0, &bytes[..bytes.len().min(256)]),
         })
     })
@@ -472,10 +499,7 @@ async fn save_media(
 ) -> Result<Option<String>, String> {
     let media = Media::select(&state, repair, index)?;
     work(move || {
-        let extension = match media.media_type() {
-            MediaType::Jpeg => "jpg",
-            MediaType::Png => "png",
-        };
+        let extension = media.extension();
         let path = app
             .dialog()
             .file()
@@ -484,7 +508,7 @@ async fn save_media(
                 "omnirecovery-{}-{index}.{extension}",
                 if repair { "repair" } else { "recovered" }
             ))
-            .add_filter("Verified image", &[extension])
+            .add_filter("Verified file", &[extension])
             .blocking_save_file();
         let Some(path) = picked(path)? else {
             return Ok(None);
@@ -562,6 +586,8 @@ fn main() {
             workflows::compare_saved,
             workflows::clone_image,
             workflows::verify_evidence,
+            workflows::scan_evidence,
+            workflows::clone_evidence,
             workflows::security_scan,
             workflows::activity_logs,
             workflows::move_activity_log,

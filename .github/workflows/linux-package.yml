@@ -1,0 +1,85 @@
+name: Linux package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/linux-package.yml'
+      - 'Cargo.*'
+      - 'src/**'
+      - 'desktop/**'
+      - 'rust-toolchain.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install build and smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth xdotool
+      - run: rustup toolchain install 1.99.1 --profile minimal
+      - run: cargo test --release --locked
+      - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
+      - run: cargo build --release --locked
+      - name: Build the GUI package and standalone CLI archive
+        run: |
+          set -eu
+          version=$(target/release/omnirecovery --version | cut -d ' ' -f 2)
+          mkdir -p package staging/DEBIAN staging/usr/bin staging/usr/share/applications staging/usr/share/icons/hicolor/256x256/apps
+          install -m 755 target/release/omnirecovery staging/usr/bin/omnirecovery
+          install -m 755 desktop/target/release/omnirecovery-desktop staging/usr/bin/omnirecovery-desktop
+          install -m 644 desktop/icons/icon.png staging/usr/share/icons/hicolor/256x256/apps/omnirecovery.png
+          cat > staging/DEBIAN/control <<CONTROL
+          Package: omnirecovery
+          Version: $version
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: OmniRecovery contributors
+          Depends: libc6 (>= 2.35), libgcc-s1, libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0, libayatana-appindicator3-1
+          Description: Local data recovery and forensic inspection
+           OmniRecovery desktop workspace and standalone command-line engine.
+          CONTROL
+          cat > staging/usr/share/applications/omnirecovery.desktop <<'ENTRY'
+          [Desktop Entry]
+          Type=Application
+          Name=OmniRecovery
+          Exec=omnirecovery-desktop
+          Icon=omnirecovery
+          Terminal=false
+          Categories=Utility;System;
+          ENTRY
+          dpkg-deb --root-owner-group --build staging "package/OmniRecovery-$version-linux-x64.deb"
+          tar -czf "package/OmniRecovery-$version-linux-cli-x64.tar.gz" -C staging/usr/bin omnirecovery -C "$GITHUB_WORKSPACE" LICENSE
+      - name: Install and exercise the published Linux binaries
+        run: |
+          set -eu
+          sudo apt-get install -y "$PWD"/package/*.deb
+          test "$(command -v omnirecovery)" = /usr/bin/omnirecovery
+          omnirecovery --version
+          cat desktop/assets/demo.jpg desktop/assets/demo.png > /tmp/omnirecovery-demo.dd
+          omnirecovery scan /tmp/omnirecovery-demo.dd > /tmp/omnirecovery-scan.json
+          python3 -c 'import json; assert len(json.load(open("/tmp/omnirecovery-scan.json"))["findings"]) >= 2'
+          mkdir -p /tmp/omnirecovery-headless
+          tar -xf package/*-linux-cli-x64.tar.gz -C /tmp/omnirecovery-headless
+          env -u DISPLAY /tmp/omnirecovery-headless/omnirecovery --version
+          xvfb-run -a bash -euc '
+            LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 omnirecovery-desktop > /tmp/omnirecovery-desktop.log 2>&1 &
+            app=$!
+            trap "kill $app 2>/dev/null || true; cat /tmp/omnirecovery-desktop.log" EXIT
+            timeout 35s xdotool search --sync --onlyvisible --name "^OmniRecovery$"
+            kill -0 "$app"
+          '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: omnirecovery-linux-x64
+          path: package/*
+          if-no-files-found: error

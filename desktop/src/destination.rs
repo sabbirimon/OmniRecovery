@@ -11,12 +11,12 @@ pub fn save_media(
 }
 
 #[cfg(target_os = "macos")]
-pub fn copy_file(source: &Path, target: &Path) -> Result<String, String> {
+pub fn copy_file(source: &Path, target: &Path) -> Result<(String, u64), String> {
     mac::copy(source, target)
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn copy_file(_: &Path, _: &Path) -> Result<String, String> {
+pub fn copy_file(_: &Path, _: &Path) -> Result<(String, u64), String> {
     Err("Verified separate-drive copying is available in the macOS build.".into())
 }
 
@@ -84,7 +84,7 @@ mod mac {
         })
     }
 
-    pub(super) fn copy(source: &Path, target: &Path) -> Result<String, String> {
+    pub(super) fn copy(source: &Path, target: &Path) -> Result<(String, u64), String> {
         save_with(source, target, |source, output, length| {
             let mut digest = Sha256::new();
             let mut read = 0;
@@ -119,7 +119,7 @@ mod mac {
             if actual.finalize() != expected {
                 return Err("The output failed readback verification.".into());
             }
-            Ok(format!("{expected:x}"))
+            Ok((format!("{expected:x}"), length))
         })
     }
 

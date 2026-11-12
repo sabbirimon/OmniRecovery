@@ -11,10 +11,12 @@ use std::fs::{File, Metadata};
 use std::io::{self, BufReader};
 use std::path::Path;
 
-use media::{MAX_CANDIDATE_BYTES, Rejection, Validated};
+use media::{Rejection, Validated};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use source::{Layout, ObservedReader, hash_image, invalid, open_image, same_file_state};
+use source::{
+    Layout, ObservedReader, hash_image, hash_image_with, invalid, open_image, same_file_state,
+};
 
 pub use backup::{BackupReport, backup_files, backup_selected_files};
 pub use catalogue::{
@@ -29,7 +31,7 @@ pub use snapshot::{
 pub use source::{SkippedKind, SkippedRange};
 
 const WINDOW_BYTES: usize = 1024 * 1024;
-const SIGNATURE_LOOKAHEAD: usize = 7;
+const SIGNATURE_LOOKAHEAD: usize = 11;
 const MAX_CANDIDATES: usize = 4096;
 const CANDIDATE_READ_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
 const CANDIDATE_BUFFER_BYTES: usize = 8 * 1024;
@@ -46,6 +48,8 @@ pub enum StorageProfile {
     Emmc,
     UsbFlash,
     Optical,
+    Camera,
+    Iot,
     VirtualDisk,
     Other,
 }
@@ -86,8 +90,19 @@ pub struct ScanReport {
     pub filesystem_signature: Option<&'static str>,
     pub partition_map: Option<PartitionMap>,
     pub offset_basis: &'static str,
+    pub triage: ScanTriage,
     pub findings: Vec<Finding>,
     pub rejected: Vec<RejectedCandidate>,
+}
+
+/// Deterministic, local classification of scan results for recovery review.
+#[derive(Debug, Default, Serialize)]
+pub struct ScanTriage {
+    pub decode_verified: usize,
+    pub container_verified: usize,
+    pub needs_more_source: usize,
+    pub structure_rejected: usize,
+    pub validation_limited: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -152,8 +167,12 @@ impl ImageSession {
     }
 
     fn verify(&mut self) -> io::Result<()> {
-        if hash_image(&mut self.file, self.metadata.len())? != self.source_sha256
-            || !same_file_state(&self.metadata, &self.file.metadata()?)
+        let digest = hash_image(&mut self.file, self.metadata.len())?;
+        self.verify_digest(&digest)
+    }
+
+    fn verify_digest(&self, digest: &str) -> io::Result<()> {
+        if digest != self.source_sha256 || !same_file_state(&self.metadata, &self.file.metadata()?)
         {
             return Err(invalid("source image changed during analysis"));
         }
@@ -215,8 +234,17 @@ impl Finding {
             sha256: format!("{:x}", Sha256::digest(&candidate.bytes)),
             width: candidate.width,
             height: candidate.height,
-            confidence: 3,
-            reason: "contiguous_observed_bytes_with_valid_structure_and_successful_decode",
+            confidence: if media_type.is_photo() { 3 } else { 2 },
+            reason: match media_type {
+                MediaType::Jpeg | MediaType::Png => {
+                    "contiguous_observed_bytes_with_valid_structure_and_successful_decode"
+                }
+                MediaType::Mp4 => "contiguous_mp4_core_with_sample_extents_inside_media_payload",
+                MediaType::Mov => "contiguous_mov_core_with_sample_extents_inside_media_payload",
+                MediaType::Wav => {
+                    "contiguous_riff_wave_with_consistent_pcm_format_and_aligned_samples"
+                }
+            },
         }
     }
 }
@@ -296,11 +324,16 @@ pub fn scan_selected_media(
         filesystem_signature,
         partition_map,
         offset_basis: "zero_based_logical_image_bytes",
+        triage: ScanTriage::default(),
         findings: Vec::new(),
         rejected: Vec::new(),
     };
     let mut buffer = vec![0; WINDOW_BYTES + SIGNATURE_LOOKAHEAD];
     let mut remaining_candidate_reads = CANDIDATE_READ_BUDGET;
+    // A complete raw scan already reads the full source. Hash only each primary
+    // window, leaving lookahead bytes for the next window's digest update.
+    let mut scan_digest =
+        (session.layout.container == "raw" && start == 0 && length == available).then(Sha256::new);
     'ranges: for (start, end) in ranges {
         let mut offset = start;
         while offset < end {
@@ -309,16 +342,15 @@ pub fn scan_selected_media(
             session
                 .layout
                 .read_observed(&mut session.file, offset, &mut buffer[..read_bytes])?;
-            for index in 0..primary_bytes {
-                let Some(media_type) = MediaType::detect(&buffer[index..read_bytes]) else {
-                    continue;
-                };
-                if media_filter.is_some_and(|requested| requested != media_type) {
-                    continue;
-                }
+            if let Some(digest) = &mut scan_digest {
+                digest.update(&buffer[..primary_bytes]);
+            }
+            for (index, media_type) in
+                media::signatures(&buffer[..read_bytes], primary_bytes, media_filter)
+            {
                 let candidate_offset = offset + index as u64;
                 let read_bound = (end - candidate_offset)
-                    .min((MAX_CANDIDATE_BYTES + CANDIDATE_BUFFER_BYTES) as u64);
+                    .min((media_type.max_bytes() + CANDIDATE_BUFFER_BYTES) as u64);
                 report.candidate_limit_reached =
                     report.findings.len() + report.rejected.len() == MAX_CANDIDATES;
                 report.validation_budget_reached = read_bound > remaining_candidate_reads;
@@ -331,36 +363,56 @@ pub fn scan_selected_media(
                 let (result, read_bytes) = session.candidate(media_type, candidate_offset, end);
                 remaining_candidate_reads -= read_bytes;
                 match result {
-                    Ok(candidate) => report.findings.push(Finding::from_validated(
-                        media_type,
-                        candidate_offset,
-                        &candidate,
-                    )),
+                    Ok(candidate) => {
+                        if media_type.is_photo() {
+                            report.triage.decode_verified += 1;
+                        } else {
+                            report.triage.container_verified += 1;
+                        }
+                        report.findings.push(Finding::from_validated(
+                            media_type,
+                            candidate_offset,
+                            &candidate,
+                        ));
+                    }
                     Err(Rejection::Io(error)) => return Err(error),
-                    Err(reason) => report.rejected.push(RejectedCandidate {
-                        offset: candidate_offset,
-                        media_type,
-                        reason: match reason {
-                            Rejection::Invalid => "invalid_or_unsupported_structure_or_decode",
-                            Rejection::Truncated
-                                if end == range_end && range_end < session.layout.logical_bytes =>
-                            {
-                                "ends_at_selected_range_boundary"
+                    Err(rejection) => {
+                        let reason = match rejection {
+                            Rejection::Invalid => {
+                                report.triage.structure_rejected += 1;
+                                "invalid_or_unsupported_structure_or_decode"
                             }
                             Rejection::Truncated => {
-                                "ends_at_unobserved_range_or_container_boundary"
+                                report.triage.needs_more_source += 1;
+                                if end == range_end && range_end < session.layout.logical_bytes {
+                                    "ends_at_selected_range_boundary"
+                                } else {
+                                    "ends_at_unobserved_range_or_container_boundary"
+                                }
                             }
-                            Rejection::Limit => "exceeds_candidate_limits",
+                            Rejection::Limit => {
+                                report.triage.validation_limited += 1;
+                                "exceeds_candidate_limits"
+                            }
                             Rejection::Io(_) => unreachable!("I/O failures propagate"),
-                        },
-                    }),
+                        };
+                        report.rejected.push(RejectedCandidate {
+                            offset: candidate_offset,
+                            media_type,
+                            reason,
+                        });
+                    }
                 }
             }
             offset += primary_bytes as u64;
             report.observed_bytes_scanned += primary_bytes as u64;
         }
     }
-    session.verify()?;
+    if let Some(digest) = scan_digest.filter(|_| report.observed_ranges_fully_scanned) {
+        session.verify_digest(&format!("{:x}", digest.finalize()))?;
+    } else {
+        session.verify()?;
+    }
     for mut skipped in session.layout.skipped_ranges {
         let low = skipped.offset.max(start);
         let high = (skipped.offset + skipped.length).min(range_end);
@@ -399,7 +451,7 @@ pub fn inspect_image_bytes(
     Ok(buffer)
 }
 
-/// Compare decoded media by exact content. The caller supplies the capture order.
+/// Compare validated media by exact content. The caller supplies the capture order.
 pub fn compare(before: &Path, after: &Path) -> io::Result<ComparisonReport> {
     let before = scan(before)?;
     let after = scan(after)?;
@@ -445,35 +497,49 @@ pub fn recover_candidate(
     source_sha256: &str,
     finding: &Finding,
 ) -> io::Result<Vec<u8>> {
-    if finding.length == 0 || finding.length > MAX_CANDIDATE_BYTES as u64 {
+    if finding.length == 0 || finding.length > finding.media_type.max_bytes() as u64 {
         return Err(invalid("candidate size is outside recovery limits"));
-    }
-    let mut session = ImageSession::open(image)?;
-    if session.source_sha256 != source_sha256 {
-        return Err(invalid("source SHA-256 does not match the findings report"));
     }
     let end = finding
         .offset
         .checked_add(finding.length)
         .ok_or_else(|| invalid("candidate offset overflow"))?;
-    if !session
-        .layout
-        .observed_ranges()
-        .iter()
-        .any(|&(start, range_end)| start <= finding.offset && end <= range_end)
-    {
-        return Err(invalid("candidate crosses an unobserved range"));
+    let mut file = open_image(image)?;
+    let state = file.metadata()?;
+    let layout = Layout::read(&mut file, state.len())?;
+    let ranges = layout.physical_ranges(finding.offset, end)?;
+    let mut ranges = ranges.into_iter().peekable();
+    let mut bytes = Vec::with_capacity(finding.length as usize);
+    // The candidate and the digest come from the same full-source read.
+    let digest = hash_image_with(&mut file, state.len(), |offset, observed| {
+        let end = offset + observed.len() as u64;
+        while let Some(range) = ranges.peek().filter(|range| range.start < end) {
+            let low = (range.start.max(offset) - offset) as usize;
+            let high = (range.end.min(end) - offset) as usize;
+            bytes.extend_from_slice(&observed[low..high]);
+            if range.end > end {
+                break;
+            }
+            ranges.next();
+        }
+    })?;
+    if digest != source_sha256 {
+        return Err(invalid("source SHA-256 does not match the findings report"));
     }
-    let candidate = session
-        .candidate(finding.media_type, finding.offset, end)
-        .0
+    let candidate = finding
+        .media_type
+        .validate(bytes.as_slice())
         .map_err(|error| match error {
             Rejection::Io(error) => error,
             _ => invalid("candidate failed independent validation"),
         })?;
-    if Finding::from_validated(finding.media_type, finding.offset, &candidate) != *finding {
+    if bytes.len() as u64 != finding.length
+        || Finding::from_validated(finding.media_type, finding.offset, &candidate) != *finding
+    {
         return Err(invalid("candidate does not match the findings report"));
     }
-    session.verify()?;
+    if !same_file_state(&state, &file.metadata()?) {
+        return Err(invalid("source image changed during recovery"));
+    }
     Ok(candidate.bytes)
 }

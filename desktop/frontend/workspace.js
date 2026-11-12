@@ -2,7 +2,8 @@
 
 const catalogueNames = {
   photo: 'Photos', video: 'Videos', audio: 'Audio', document: 'Documents', log: 'Logs',
-  contact: 'Contacts', message: 'Messages & call exports', database: 'Databases',
+  contact: 'Contacts', message: 'SMS & messages', call_history: 'Call history', chat_history: 'Chat exports',
+  whatsapp: 'WhatsApp', messenger: 'Messenger', mail: 'Mail', device_info: 'Device info & IMEI files', database: 'Databases',
   account: 'Account exports', browser: 'Browser history & tabs', archive: 'Archives & app packages', other: 'Other files'
 };
 const sourceNames = {
@@ -19,6 +20,7 @@ let cloneSelection = new Set();
 let deviceList = null;
 let snapshots = null;
 let activeLog = null;
+let evidenceReportKind = null;
 let canCopy = false;
 
 window.syncWorkspaceControls = () => {
@@ -31,6 +33,8 @@ window.syncWorkspaceControls = () => {
   el('review-transfer-files').disabled ||= !selections.has('transfer');
   el('start-transfer').disabled ||= cloneList !== null && cloneSelection.size === 0;
   el('verify-evidence').disabled ||= !selections.has('evidence');
+  el('scan-evidence').disabled ||= !selections.has('evidence');
+  el('clone-evidence').disabled ||= !selections.has('evidence');
   el('scan-sample').disabled ||= !selections.has('security');
   el('scan-security-log').disabled ||= !selections.has('security');
   el('make-sanitize-plan').disabled ||= !el('sanitize-disk').value;
@@ -221,8 +225,9 @@ function renderCapture() {
 async function refreshCaptures() { snapshots = await invoke('capture_status'); renderCapture(); }
 pick('pick-capture-source', captureSource, 'capture-source-name', () => {});
 el('capture-source-kind').addEventListener('change', () => {
-  setSelection(captureSource(), null, 'capture-source-name', 'Choose a source to capture.');
-  el('clone-image').hidden = !canCopy || captureSource() !== 'capture_image';
+  const image = captureSource() === 'capture_image';
+  setSelection(captureSource(), null, 'capture-source-name', image ? 'Choose an existing disk image to begin.' : 'Choose a folder or phone export to begin.');
+  el('clone-image').hidden = !canCopy || !image;
   controls();
 });
 for (const stage of ['before', 'after']) {
@@ -289,13 +294,52 @@ el('toggle-transfer-selection').addEventListener('click', () => {
   renderCloneList();
 });
 
+function showEvidenceReport(kind, title, fields) {
+  evidenceReportKind = kind;
+  el('evidence-report-title').textContent = title;
+  describe('evidence-detail', fields);
+  el('evidence-output').hidden = false;
+}
+
+const caseReference = () => el('case-reference').value.trim();
 pick('pick-evidence', 'evidence', 'evidence-name', () => { el('evidence-output').hidden = true; });
 el('verify-evidence').addEventListener('click', () => run('Verifying the selected evidence file…', async () => {
   el('evidence-output').hidden = true;
-  const result = await invoke('verify_evidence', {expected: el('evidence-sha').value.trim(), caseReference: el('case-reference').value.trim()});
-  describe('evidence-detail', [['File', result.source], ['Bytes', size(result.bytes)], ['Read passes', result.verified_passes], ['Reference match', result.matches_reference === null ? 'No reference supplied' : result.matches_reference ? 'Matched' : 'Mismatch'], ['SHA-256', result.sha256, true]]);
-  el('evidence-output').hidden = false;
+  const result = await invoke('verify_evidence', {expected: el('evidence-sha').value.trim(), caseReference: caseReference()});
+  showEvidenceReport('evidence', 'Verification report', [['Case reference', result.case_reference || 'Unspecified'], ['File', result.source], ['Bytes', size(result.bytes)], ['Read passes', result.verified_passes], ['Reference match', result.matches_reference === null ? 'No reference supplied' : result.matches_reference ? 'Matched' : 'Mismatch'], ['SHA-256', result.sha256, true]]);
   return result.logging_warning || 'Verification finished.';
+}));
+
+el('scan-evidence').addEventListener('click', () => run('Scanning the selected evidence image…', async () => {
+  el('evidence-output').hidden = true;
+  const result = await invoke('scan_evidence', {caseReference: caseReference(), offset: readBound('evidence-offset', 0), length: readBound('evidence-length', null), media: el('evidence-media').value || null});
+  showEvidenceReport('forensic_scan', 'Forensic scan report', [
+    ['Case reference', result.case_reference || 'Unspecified'], ['Container', words(result.container)],
+    ['Byte offset', number.format(result.selected_range.offset)], ['Scope', size(result.selected_range.length)],
+    ['Observed bytes scanned', size(result.observed_bytes_scanned)], ['Sparse bytes skipped', size(result.fill_bytes_skipped + result.unspecified_bytes_skipped)],
+    ['Observed range coverage', result.observed_ranges_fully_scanned ? 'Complete' : 'Partial'], ['Media filter', result.media_filter?.toUpperCase() || 'All supported media'],
+    ['Validated findings', number.format(result.findings.length)], ['Rejected candidates', number.format(result.rejected.length)],
+    ['Decode-verified', number.format(result.triage.decode_verified)], ['Container-verified', number.format(result.triage.container_verified)],
+    ['Cut short at a source boundary', number.format(result.triage.needs_more_source)], ['Exceeded validation limits', number.format(result.triage.validation_limited)],
+    ['Elapsed', `${number.format(result.elapsed_ms)} ms`], ['Source SHA-256', result.source_sha256, true],
+  ]);
+  return result.logging_warning || 'Forensic scan finished. Export the report for individual findings.';
+}));
+
+el('clone-evidence').addEventListener('click', () => run('Choose a separate physical drive for the clone…', async () => {
+  el('evidence-output').hidden = true;
+  const result = await invoke('clone_evidence', {caseReference: caseReference()});
+  if (result.status === 'cancelled') return result.logging_warning || '';
+  showEvidenceReport('evidence_clone', 'Image clone report', [
+    ['Case reference', result.case_reference || 'Unspecified'], ['Output file', result.name], ['Bytes copied', size(result.bytes)],
+    ['Readback verification', result.readback_verified ? 'Passed' : 'Unavailable'], ['Elapsed', `${number.format(result.elapsed_ms)} ms`], ['SHA-256', result.sha256, true],
+  ]);
+  return result.logging_warning || 'Clone saved and verified.';
+}));
+
+el('save-evidence-report').addEventListener('click', () => run('Choose where to export the report…', async () => {
+  const name = await invoke('save_report', {kind: evidenceReportKind});
+  return name ? `Saved ${name}.` : '';
 }));
 
 pick('pick-security', 'security', 'security-name', () => { el('security-output').hidden = true; });
@@ -359,7 +403,7 @@ el('make-sanitize-plan').addEventListener('click', () => run('Preparing a device
   return 'Plan prepared for review.';
 }));
 
-for (const [id, kind] of [['save-catalogue-report', 'catalogue'], ['save-evidence-report', 'evidence'], ['save-security-report', 'security'], ['save-sanitize-report', 'sanitize']]) {
+for (const [id, kind] of [['save-catalogue-report', 'catalogue'], ['save-security-report', 'security'], ['save-sanitize-report', 'sanitize']]) {
   el(id).addEventListener('click', () => run('Choose where to export the report…', async () => {
     const name = await invoke('save_report', {kind});
     return name ? `Saved ${name}.` : '';
@@ -373,5 +417,9 @@ document.addEventListener('view-changed', ({detail}) => {
   if (detail === 'logs') run('Loading scan logs…', refreshLogs);
 });
 
-invoke('media_saving_available').then(available => { canCopy = available; }).catch(() => {});
+invoke('media_saving_available').then(available => {
+  canCopy = available;
+  el('clone-evidence').hidden = !available;
+  el('clone-image').hidden = !available || captureSource() !== 'capture_image';
+}).catch(() => {});
 controls();
