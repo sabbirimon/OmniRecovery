@@ -46,6 +46,8 @@ Open **My devices** and select the phone. Choose **Device details** for its Andr
 
 If the connection needs authorization, open **Connection setup** and complete the device prompt. Shared-file browsing uses Android USB debugging or an already paired Wireless debugging connection. It lists standard shared folders and reports when the listing reaches its limit. For private records such as SMS, calls, contacts, and chat histories, use a readable export or supported backup.
 
+On Windows, macOS, and Linux, **File transfer** (MTP) can stay enabled. OmniRecovery uses ADB for live Android browsing, capture, device details, and screen mirroring. Install Android Platform-Tools and approve the debugging prompt on the unlocked phone. Linux may also need the distribution's Android USB udev rules. **My devices** shows recognized USB phones while they are waiting for debugging setup. [Android USB setup by platform](https://developer.android.com/studio/run/device)
+
 To look for deleted items, check the phone's Gallery or file manager Trash and any earlier backups. **My devices** shows current shared files. For a readable image of a removable card, use `undelete-fat32` on FAT32 or `tsk-deleted` with an installed Sleuth Kit for supported filesystems. [Deleted-file recovery workflow](acquisition-and-recovery.md)
 
 ### Work on several phones

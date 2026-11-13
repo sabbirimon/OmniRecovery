@@ -28,6 +28,7 @@ jobs:
       - run: rustup toolchain install 1.99.1 --profile minimal
       - run: cargo test --release --locked
       - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
+      - run: cargo test --release --locked --manifest-path desktop/Cargo.toml
       - run: cargo build --release --locked
       - name: Exercise whole-block capture with a disposable loop device
         run: |

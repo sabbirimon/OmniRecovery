@@ -54,25 +54,29 @@ pub struct Devices {
     pub storage_error: Option<String>,
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(target_os = "macos"))]
 pub fn discover() -> Result<Devices, String> {
-    Ok(Devices {
-        disks: Vec::new(),
-        usb: Vec::new(),
-        usb_error: Some("USB product inventory is available in the macOS build.".into()),
-        storage_error: Some("Live storage inventory is available in the macOS build.".into()),
-    })
-}
-
-#[cfg(windows)]
-pub fn discover() -> Result<Devices, String> {
-    let usb = windows::usb();
+    let usb = platform_usb();
     Ok(Devices {
         disks: Vec::new(),
         usb_error: usb.as_ref().err().cloned(),
         usb: usb.unwrap_or_default(),
-        storage_error: Some("Use Scan media to open a disk image or folder on Windows.".into()),
+        storage_error: Some(
+            "Use Scan media to open a disk image or folder on this platform.".into(),
+        ),
     })
+}
+
+#[cfg(target_os = "linux")]
+use linux::usb as platform_usb;
+#[cfg(target_os = "macos")]
+use mac::usb as platform_usb;
+#[cfg(windows)]
+use windows::usb as platform_usb;
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn platform_usb() -> Result<Vec<UsbDevice>, String> {
+    Err("USB inventory is unavailable on this platform.".into())
 }
 
 #[cfg(target_os = "macos")]
@@ -231,12 +235,7 @@ pub fn discover_phones() -> PhoneInventory {
     let (android, ios, usb) = std::thread::scope(|scope| {
         let android = scope.spawn(|| detect_devices(Transport::Android));
         let ios = scope.spawn(|| detect_devices(Transport::Ios));
-        #[cfg(target_os = "macos")]
-        let usb = mac::usb();
-        #[cfg(windows)]
-        let usb = windows::usb();
-        #[cfg(not(any(target_os = "macos", windows)))]
-        let usb: Result<Vec<UsbDevice>, String> = Ok(Vec::new());
+        let usb = platform_usb();
         (
             android
                 .join()
@@ -259,6 +258,134 @@ pub fn discover_phones() -> PhoneInventory {
         android_error,
         ios_error,
         usb_error,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn phone_platform(name: &str, vendor: &str, vendor_id: Option<u64>) -> &'static str {
+    let name = name.to_ascii_lowercase();
+    let vendor = vendor.to_ascii_lowercase();
+    if vendor_id == Some(0x05ac)
+        && ["iphone", "ipad", "ipod"]
+            .iter()
+            .any(|model| name.contains(model))
+    {
+        return "iOS";
+    }
+    let model_hints = [
+        "android",
+        "pixel",
+        "galaxy",
+        "redmi",
+        "poco",
+        "fastboot",
+        "adb interface",
+        "moto ",
+        "oneplus",
+        "oppo",
+        "realme",
+        "vivo",
+    ];
+    let mobile_vendor = matches!(vendor_id, Some(0x2717 | 0x22d9 | 0x2d95 | 0x22b8 | 0x2a70))
+        || ["xiaomi", "oneplus", "motorola", "oppo", "realme", "vivo"]
+            .iter()
+            .any(|maker| vendor.contains(maker));
+    let samsung_model = vendor_id == Some(0x04e8)
+        && ["sm-", "gt-", "sch-", "sgh-"]
+            .iter()
+            .any(|prefix| name.starts_with(prefix));
+    if model_hints.iter().any(|hint| name.contains(hint)) || mobile_vendor || samsung_model {
+        return "Android";
+    }
+    "USB peripheral"
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::UsbDevice;
+    use std::fs;
+    use std::io;
+    use std::path::Path;
+
+    pub(super) fn usb() -> Result<Vec<UsbDevice>, String> {
+        read_inventory(Path::new("/sys/bus/usb/devices"))
+            .map_err(|error| format!("Linux USB inventory is unavailable. {error}"))
+    }
+
+    fn attribute(path: &Path, name: &str) -> Option<String> {
+        let value = fs::read_to_string(path.join(name)).ok()?;
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_owned())
+    }
+
+    fn id(path: &Path, attribute_name: &str) -> Option<u16> {
+        u16::from_str_radix(&attribute(path, attribute_name)?, 16).ok()
+    }
+
+    fn read_inventory(root: &Path) -> io::Result<Vec<UsbDevice>> {
+        let mut paths: Vec<_> = fs::read_dir(root)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .collect();
+        paths.sort_unstable();
+        Ok(paths
+            .iter()
+            .filter_map(|path| {
+                let vendor_id = id(path, "idVendor")?;
+                let product_id = id(path, "idProduct")?;
+                let name = attribute(path, "product")
+                    .unwrap_or_else(|| format!("USB device {vendor_id:04x}:{product_id:04x}"));
+                let vendor =
+                    attribute(path, "manufacturer").unwrap_or_else(|| "Unknown vendor".into());
+                let platform = super::phone_platform(&name, &vendor, Some(vendor_id.into()));
+                let android_interface = platform == "USB peripheral"
+                    && fs::read_dir(path)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .any(|interface| {
+                            id(&interface, "bInterfaceClass") == Some(0xff)
+                                && id(&interface, "bInterfaceSubClass") == Some(0x42)
+                                && id(&interface, "bInterfaceProtocol") == Some(1)
+                        });
+                Some(UsbDevice {
+                    name,
+                    vendor,
+                    platform: if android_interface {
+                        "Android"
+                    } else {
+                        platform
+                    },
+                    serial: attribute(path, "serial"),
+                })
+            })
+            .collect())
+    }
+
+    #[test]
+    fn inventory_finds_file_transfer_phone_and_unapproved_adb_interface() -> io::Result<()> {
+        let temp = tempfile::tempdir()?;
+        for (port, vendor, product) in [("1-1", "04e8", "SM-A207F"), ("1-2", "1234", "USB device")]
+        {
+            let path = temp.path().join(port);
+            fs::create_dir(&path)?;
+            fs::write(path.join("idVendor"), vendor)?;
+            fs::write(path.join("idProduct"), "6860")?;
+            fs::write(path.join("product"), product)?;
+            fs::write(path.join("serial"), "fixture")?;
+        }
+        let interface = temp.path().join("1-2/1-2:1.0");
+        fs::create_dir(&interface)?;
+        fs::write(interface.join("bInterfaceClass"), "ff")?;
+        fs::write(interface.join("bInterfaceSubClass"), "42")?;
+        fs::write(interface.join("bInterfaceProtocol"), "01")?;
+        let devices = read_inventory(temp.path())?;
+        assert_eq!(devices.len(), 2);
+        assert!(devices.iter().all(|phone| phone.platform == "Android"));
+        assert_eq!(devices[0].name, "SM-A207F");
+        assert_eq!(devices[0].serial.as_deref(), Some("fixture"));
+        Ok(())
     }
 }
 
@@ -604,40 +731,6 @@ mod mac {
                 })
             })
             .collect())
-    }
-
-    fn phone_platform(name: &str, vendor: &str, vendor_id: Option<u64>) -> &'static str {
-        let name = name.to_ascii_lowercase();
-        let vendor = vendor.to_ascii_lowercase();
-        if vendor_id == Some(0x05ac)
-            && ["iphone", "ipad", "ipod"]
-                .iter()
-                .any(|model| name.contains(model))
-        {
-            return "iOS";
-        }
-        let model_hints = [
-            "android",
-            "pixel",
-            "galaxy",
-            "redmi",
-            "poco",
-            "fastboot",
-            "adb interface",
-            "moto ",
-            "oneplus",
-            "oppo",
-            "realme",
-            "vivo",
-        ];
-        let mobile_vendor = matches!(vendor_id, Some(0x2717 | 0x22d9 | 0x2d95 | 0x22b8 | 0x2a70))
-            || ["xiaomi", "oneplus", "motorola", "oppo", "realme", "vivo"]
-                .iter()
-                .any(|maker| vendor.contains(maker));
-        if model_hints.iter().any(|hint| name.contains(hint)) || mobile_vendor {
-            return "Android";
-        }
-        "USB peripheral"
     }
 
     #[cfg(test)]

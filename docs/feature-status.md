@@ -4,7 +4,7 @@ The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/
 
 ## 0.3.11 Windows detection and forensic recovery
 
-- **My devices** checks Windows USB inventory alongside ADB. It distinguishes supported phone presence from debugging authorization. Current Platform-Tools report USB transport explicitly.
+- **My devices** checks Windows Plug and Play, macOS USB inventory, or Linux sysfs alongside ADB. It distinguishes supported phone presence from debugging authorization. Current Platform-Tools report USB transport explicitly.
 - The Windows portable package accepts Platform-Tools and scrcpy beside the executable. [Windows setup](windows-setup.md)
 - **Forensics** supports selected Sleuth Kit recovery, TestDisk partition listing, PhotoRec carving, and FQLite CASE report import. [Available adapters and upstream plan](forensic-integrations.md)
 

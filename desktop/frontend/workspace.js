@@ -866,9 +866,11 @@ function applyUsbInventory(inventory) {
   usbPhones = inventory.phones;
   const notes = [inventory.android_error, inventory.usb_error];
   const windows = navigator.userAgent.includes('Windows');
+  const linux = navigator.userAgent.includes('Linux');
   el('phone-windows-help').hidden = !windows;
-  if (windows && usbPhones.some(phone => phone.transport === 'android' && phone.state === 'usb_detected')) {
-    notes.push('Windows sees the phone. Enable USB debugging and check the ADB driver to browse or capture files.');
+  el('phone-linux-help').hidden = !linux;
+  if (usbPhones.some(phone => phone.transport === 'android' && phone.state === 'usb_detected')) {
+    notes.push('USB detected. Enable and approve USB debugging to browse or capture files.');
   }
   if (usbPhones.some(phone => phone.transport === 'ios')) notes.push(inventory.ios_error);
   el('phone-usb-status').textContent = notes.filter(Boolean).join(' ');
