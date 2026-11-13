@@ -113,6 +113,28 @@ pub(crate) fn find_helper(program: &str) -> io::Result<PathBuf> {
                 directories.push(PathBuf::from(path).join("platform-tools"));
             }
         }
+        #[cfg(windows)]
+        {
+            if let Ok(executable) = std::env::current_exe()
+                && let Some(folder) = executable.parent()
+            {
+                directories.insert(0, folder.join("platform-tools"));
+            }
+            if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+                directories.push(PathBuf::from(local).join("Android/Sdk/platform-tools"));
+            }
+        }
+    }
+    #[cfg(windows)]
+    if let Ok(executable) = std::env::current_exe()
+        && let Some(folder) = executable.parent()
+    {
+        match program {
+            "scrcpy" => directories.insert(0, folder.join("scrcpy")),
+            "testdisk_win" | "photorec_win" => directories.insert(0, folder.join("testdisk")),
+            "fls" | "icat" => directories.insert(0, folder.join("sleuthkit")),
+            _ => {}
+        }
     }
     directories
         .into_iter()
@@ -124,13 +146,22 @@ pub(crate) fn find_helper(program: &str) -> io::Result<PathBuf> {
         .ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("Install the required helper {program} and add it to PATH."),
+                match (cfg!(windows), program) {
+                    (true, "adb" | "fastboot") => format!("Extract Android SDK Platform-Tools beside OmniRecovery in the platform-tools folder. It must contain {filename}."),
+                    (true, "scrcpy") => "Extract the Windows scrcpy package into a scrcpy folder beside OmniRecovery.".into(),
+                    _ => format!("Install the required helper {program} and add it to PATH."),
+                },
             )
         })
 }
 
 pub(crate) fn adapter_command(program: &str) -> io::Result<Command> {
     let mut command = Command::new(find_helper(program)?);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     command
         .env_remove("ADB_SERVER_SOCKET")
         .env_remove("ANDROID_ADB_SERVER_ADDRESS")
@@ -307,6 +338,20 @@ pub fn detect_devices(transport: Transport) -> io::Result<Vec<DetectedDevice>> {
         }
     };
     let result = run_adapter(&mut command, Duration::from_secs(15))?;
+    #[cfg(windows)]
+    if transport == Transport::Android {
+        return crate::android_wifi::detect_windows_usb()
+            .or_else(|error| {
+                let proven = parse_devices(transport, &result);
+                if proven.is_empty() && result.lines().skip_while(|line| !line.starts_with("List of devices attached"))
+                    .skip(1).any(|line| line.split_whitespace().nth(1) == Some("device"))
+                {
+                    Err(io::Error::other(format!("ADB could not identify the USB transport. Update Android SDK Platform-Tools. {error}")))
+                } else {
+                    Ok(proven)
+                }
+            });
+    }
     Ok(parse_devices(transport, &result))
 }
 

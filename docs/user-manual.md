@@ -5,7 +5,7 @@
 | Platform | Package | Start |
 | --- | --- | --- |
 | macOS | Universal `.dmg` | Drag the app to Applications. Open **OmniRecovery** and select **Toolbox → Scan media → Try demo** |
-| Windows x64 | Desktop `.exe` | Start the desktop executable on a host with WebView2. The separate CLI executable emits JSON |
+| Windows x64 | Portable ZIP or desktop `.exe` | Use the Windows setup guide to configure Android Platform-Tools, OEM USB drivers, and scrcpy. The CLI emits JSON. [Windows setup](windows-setup.md) |
 | Linux x64 | Desktop and CLI `.deb`, or standalone CLI `.tar.gz` | Install the Debian package and open **OmniRecovery** from the desktop menu, or run the standalone `omnirecovery` CLI |
 | Android | Debug companion `.apk` | Open **OmniRecovery** to create encrypted file backups or verify and restore transfer archives |
 
@@ -68,7 +68,7 @@ Unencrypted transfers require Android companion 0.3.10 or newer. [Transfer forma
 
 ## Verification, security and logs
 
-In **Forensics**, use **Deleted entries · The Sleuth Kit** with a raw image and installed `fls`. The saved report includes the image hash, helper version, and filesystem geometry. **Mobile artifact analysis** opens an Android export in ALEAPP or an iOS export or unencrypted backup in iLEAPP using a trusted local checkout and Python environment. [Forensic tools and setup](forensic-integrations.md)
+In **Forensics**, use **Deleted entries · The Sleuth Kit** with a raw image and installed `fls`. Choose a deleted file from the listing to recover a candidate with `icat`. The saved reports include the image hash, helper version, and filesystem geometry. Use TestDisk for partition inventory, PhotoRec for file signature carving, or import a FQLite CASE JSON-LD report. **Mobile artifact analysis** opens an Android export in ALEAPP or an iOS export or unencrypted backup in iLEAPP using a trusted local checkout and Python environment. [Forensic tools and setup](forensic-integrations.md)
 
 - **Forensics** verifies a file in two read passes, scans an acquired image using optional byte offset, length and media arguments, and clones an acquired image to a separate physical drive on macOS. Add a case identifier for the unsigned JSON report and local activity summary. The image scan reports coverage, elapsed time, findings, rejections and source SHA-256. The clone reports bytes, elapsed time and readback SHA-256. Live-device acquisition requires a separate workflow.
 - **Repair files** handles specific JPEG and PNG damage, selected PCM WAV header fields, a final `moov` or `mdat` box size in supported MP4 or MOV, and the ZIP directory size or offset of supported DOCX, XLSX and PPTX packages. It assesses files up to 16 MiB and requires a trusted original SHA-256 except for the supported PNG end-marker repair. Missing media samples, corrupt Office XML and PDFs are outside this repair scope.

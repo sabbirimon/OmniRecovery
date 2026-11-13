@@ -2,6 +2,12 @@
 
 The MIT [0.3.3 preview](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.3) adds verified acquisition and the recovery, cloud, AI and custody CLI commands below. The published [0.3.2 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.2) includes a macOS universal DMG, Windows x64 desktop and CLI executables, and Linux x64 GUI/CLI packages. The [0.3.0 release](https://github.com/sabbirimon/OmniRecovery/releases/tag/v0.3.0) also includes the Android debug companion.
 
+## 0.3.11 Windows detection and forensic recovery
+
+- **My devices** checks Windows USB inventory alongside ADB. It distinguishes supported phone presence from debugging authorization. Current Platform-Tools report USB transport explicitly.
+- The Windows portable package accepts Platform-Tools and scrcpy beside the executable. [Windows setup](windows-setup.md)
+- **Forensics** supports selected Sleuth Kit recovery, TestDisk partition listing, PhotoRec carving, and FQLite CASE report import. [Available adapters and upstream plan](forensic-integrations.md)
+
 ## 0.3.10 phone file manager, transfers and forensic analysis
 
 - The phone overview opens a separate file manager for its selected Android device. It supports category views, folder navigation, search, and verified exports. **Device details** opens the extended specifications panel.

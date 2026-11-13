@@ -12,13 +12,13 @@ OmniRecovery is an offline-first media recovery and forensic inspection toolkit 
 
 ## Open the desktop app
 
-Get the macOS universal DMG, Windows x64 desktop and CLI executables, Linux x64 DEB and standalone CLI from [GitHub Releases](https://github.com/sabbirimon/OmniRecovery/releases). The Android companion APK is available with current Android preview releases. On macOS, open the DMG and drag **OmniRecovery** into **Applications**. The icon is a white ring with teal data tiles on a navy square. The macOS bundle is ad hoc signed and unnotarized. The Android APK is debug signed.
+Get the macOS universal DMG, Windows x64 portable ZIP and separate executables, Linux x64 DEB and standalone CLI from [GitHub Releases](https://github.com/sabbirimon/OmniRecovery/releases). The Android companion APK is available with current Android preview releases. On macOS, open the DMG and drag **OmniRecovery** into **Applications**. The icon is a white ring with teal data tiles on a navy square. The macOS bundle is ad hoc signed and unnotarized. The Android APK is debug signed.
 
 Open **Toolbox → Scan media → Try demo** to scan a synthetic image and review its JPEG, PNG, MP4 and WAV findings. Use **My devices** for USB and Android Wireless debugging and **Devices & storage** for macOS disk inventory. Use **Capture & clone** to collect connected devices and save a before/after pair, and **Phone clone** to transfer selected files to Android. On macOS, saving recovered media requires a verified separate physical drive. See the [desktop guide](docs/desktop.md).
 
 ## Try the development CLI
 
-The macOS app includes `/Applications/OmniRecovery.app/Contents/MacOS/omnirecovery-cli`. The Windows CLI executable runs from PowerShell. The standalone CLI remains usable without the desktop app.
+The macOS app includes `/Applications/OmniRecovery.app/Contents/MacOS/omnirecovery-cli`. The Windows CLI executable runs from PowerShell. Android detection and mirroring use separately installed helpers that can sit beside the desktop executable. [Windows setup guide](docs/windows-setup.md) The standalone CLI remains usable without the desktop app.
 
 From source, with Rustup available, build using `cargo build --release --locked`. The CLI accepts readable images and exports and can collect through a selected local USB helper. Use synthetic fixtures during development.
 

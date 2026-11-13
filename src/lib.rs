@@ -65,7 +65,10 @@ pub use device_service::{
     MirrorVideo, android_fastboot_devices, inspect_android_details, ios_enter_recovery,
     ios_exit_recovery, ios_recovery_status, start_android_mirror, start_android_preview,
 };
-pub use external_analysis::{LeappEngine, LeappInput, analyze_leapp, tsk_deleted};
+pub use external_analysis::{
+    LeappEngine, LeappInput, analyze_leapp, import_fqlite_report, photorec_carve, testdisk_list,
+    tsk_deleted, tsk_deleted_entries, tsk_recover,
+};
 pub use fat32::{
     DeletedFatFile, FatExportReport, FatUndeleteReport, recover_fat32_deleted, scan_fat32_deleted,
 };

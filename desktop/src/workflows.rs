@@ -459,9 +459,119 @@ pub(super) async fn list_deleted_evidence(
                 .and_then(|file| file.take(32 * 1024).read_to_end(&mut bytes));
             let mut summary = forensic_adapter_summary(report);
             if preview.is_ok() {
-                summary["preview"] = json!(String::from_utf8_lossy(&bytes));
+                let preview = String::from_utf8_lossy(&bytes);
+                summary["preview"] = json!(preview);
+                let report_path = PathBuf::from(
+                    summary["output"]
+                        .as_str()
+                        .ok_or("Report path unavailable.")?,
+                );
+                let metadata: Value = serde_json::from_reader(
+                    std::fs::File::open(report_path.join("data/omnirecovery-analysis.json"))
+                        .map_err(error)?,
+                )
+                .map_err(error)?;
+                summary["source_sha256"] = metadata["source_sha256"].clone();
+                summary["entries"] = json!(
+                    omnirecovery::tsk_deleted_entries(&preview)
+                        .take(300)
+                        .collect::<Vec<_>>()
+                );
             }
             Ok(summary)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn recover_deleted_evidence(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    sector_offset: u64,
+    sector_size: u32,
+    address: String,
+    source_sha256: String,
+) -> Result<Value, String> {
+    let image = selected(&state, Source::Evidence)?;
+    work(move || {
+        let Some(destination) = forensic_report_destination(&app)? else {
+            return Ok(Value::Null);
+        };
+        tracked(&app, "sleuth_kit_deleted_recovery", || {
+            let report = omnirecovery::tsk_recover(
+                &image,
+                &destination,
+                sector_offset,
+                sector_size,
+                &address,
+                &source_sha256,
+            )
+            .map_err(error)?;
+            let output = report.output.join("data/recovered.bin");
+            let mut summary = forensic_adapter_summary(report);
+            summary["recovered"] = json!(output);
+            Ok(summary)
+        })
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ImageAnalysis {
+    Testdisk,
+    Photorec,
+}
+
+#[tauri::command]
+pub(super) async fn import_fqlite(
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Value, String> {
+    let source = selected(&state, Source::FqliteReport)?;
+    work(move || {
+        let Some(destination) = forensic_report_destination(&app)? else {
+            return Ok(Value::Null);
+        };
+        tracked(&app, "fqlite_case_import", || {
+            let report =
+                omnirecovery::import_fqlite_report(&source, &destination).map_err(error)?;
+            let metadata: Value = serde_json::from_reader(
+                std::fs::File::open(report.output.join("data/omnirecovery-analysis.json"))
+                    .map_err(error)?,
+            )
+            .map_err(error)?;
+            let mut summary = forensic_adapter_summary(report);
+            summary["preview"] = json!(serde_json::to_string_pretty(&metadata).map_err(error)?);
+            Ok(summary)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn analyze_image(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    tool: ImageAnalysis,
+) -> Result<Value, String> {
+    let image = selected(&state, Source::Evidence)?;
+    work(move || {
+        let Some(destination) = forensic_report_destination(&app)? else {
+            return Ok(Value::Null);
+        };
+        let (operation, analyze): (
+            &str,
+            fn(&Path, &Path) -> std::io::Result<omnirecovery::AcquisitionReport>,
+        ) = match tool {
+            ImageAnalysis::Testdisk => ("testdisk_partition_listing", omnirecovery::testdisk_list),
+            ImageAnalysis::Photorec => ("photorec_carving", omnirecovery::photorec_carve),
+        };
+        tracked(&app, operation, || {
+            Ok(forensic_adapter_summary(
+                analyze(&image, &destination).map_err(error)?,
+            ))
         })
     })
     .await

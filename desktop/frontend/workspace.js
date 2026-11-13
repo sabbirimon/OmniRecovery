@@ -137,6 +137,9 @@ window.syncWorkspaceControls = () => {
   el('scan-evidence').disabled ||= !selections.has('evidence');
   el('clone-evidence').disabled ||= !selections.has('evidence');
   el('run-tsk').disabled ||= !selections.has('evidence');
+  el('run-fqlite').disabled ||= !selections.has('fqlite_report');
+  el('recover-tsk').disabled ||= !el('tsk-recovery-entry').value;
+  for (const id of ['run-testdisk', 'run-photorec']) el(id).disabled ||= !selections.has('evidence');
   el('run-leapp').disabled ||= !['leapp_export', 'leapp_checkout', 'leapp_python'].every(slot => selections.has(slot));
   el('scan-sample').disabled ||= !selections.has('security');
   el('scan-security-log').disabled ||= !selections.has('security');
@@ -618,6 +621,7 @@ function phoneStatus(phone) {
   if (phone.state === 'unauthorized') return 'Approve USB debugging on the phone';
   if (phone.state === 'usb_detected') return phone.transport === 'ios' ? 'USB detected · confirm device trust' : 'USB detected · set up USB debugging';
   if (phone.state === 'offline') return 'Device detected · offline';
+  if (phone.state === 'permission_required') return 'USB detected · check the USB driver or permissions';
   return words(phone.state);
 }
 
@@ -861,6 +865,11 @@ function applyUsbInventory(inventory) {
   const changed = JSON.stringify(usbPhones) !== JSON.stringify(inventory.phones);
   usbPhones = inventory.phones;
   const notes = [inventory.android_error, inventory.usb_error];
+  const windows = navigator.userAgent.includes('Windows');
+  el('phone-windows-help').hidden = !windows;
+  if (windows && usbPhones.some(phone => phone.transport === 'android' && phone.state === 'usb_detected')) {
+    notes.push('Windows sees the phone. Enable USB debugging and check the ADB driver to browse or capture files.');
+  }
   if (usbPhones.some(phone => phone.transport === 'ios')) notes.push(inventory.ios_error);
   el('phone-usb-status').textContent = notes.filter(Boolean).join(' ');
   phonesLoaded = true;
@@ -1466,7 +1475,12 @@ function showEvidenceReport(kind, title, fields) {
 }
 
 const caseReference = () => el('case-reference').value.trim();
-pick('pick-evidence', 'evidence', 'evidence-name', () => { el('evidence-output').hidden = true; });
+pick('pick-evidence', 'evidence', 'evidence-name', () => {
+  el('evidence-output').hidden = true;
+  el('external-forensic-result').hidden = true;
+  el('tsk-recovery').hidden = true;
+  el('tsk-recovered-path').hidden = true;
+});
 el('verify-evidence').addEventListener('click', () => run('Verifying the selected evidence file…', async () => {
   el('evidence-output').hidden = true;
   const result = await invoke('verify_evidence', {expected: el('evidence-sha').value.trim(), caseReference: caseReference()});
@@ -1599,19 +1613,51 @@ function showExternalReport(result, title) {
   return 'Report saved.';
 }
 
+let tskListing = null;
 el('run-tsk').addEventListener('click', () => run('Scanning the selected image for deleted entries…', async () => {
   const offset = el('tsk-offset').value.trim();
   const sectorOffset = Number(offset || 0);
   if (!/^\d*$/.test(offset) || !Number.isSafeInteger(sectorOffset)) throw Error('Enter a valid nonnegative filesystem start sector.');
   el('external-forensic-result').hidden = true;
-  return showExternalReport(await invoke('list_deleted_evidence', {sectorOffset, sectorSize:Number(el('tsk-sector').value)}), 'Deleted filesystem entries');
+  el('tsk-recovery').hidden = true;
+  el('tsk-recovered-path').hidden = true;
+  const sectorSize = Number(el('tsk-sector').value);
+  const result = await invoke('list_deleted_evidence', {sectorOffset, sectorSize});
+  if (result?.entries?.length) {
+    tskListing = {sectorOffset, sectorSize, sourceSha256:result.source_sha256};
+    el('tsk-recovery-entry').replaceChildren(...result.entries.map(entry => new Option(`${entry.path} · ${entry.address}`, entry.address)));
+    el('tsk-recovery').hidden = false;
+  }
+  return showExternalReport(result, 'Deleted filesystem entries');
 }));
+
+el('recover-tsk').addEventListener('click', () => run('Recovering the selected deleted-file candidate…', async () => {
+  if (!tskListing) return '';
+  const result = await invoke('recover_deleted_evidence', {...tskListing, address:el('tsk-recovery-entry').value});
+  if (!result) return '';
+  el('tsk-recovered-path').textContent = `Candidate saved to ${result.recovered}`;
+  el('tsk-recovered-path').hidden = false;
+  return 'Recovered candidate saved.';
+}));
+
+for (const [tool, title] of [['testdisk', 'TestDisk partition report'], ['photorec', 'PhotoRec carved files']]) {
+  el(`run-${tool}`).addEventListener('click', () => run(`Running ${title}…`, async () => {
+    el('external-forensic-result').hidden = true;
+    return showExternalReport(await invoke('analyze_image', {tool}), title);
+  }));
+}
 
 el('run-leapp').addEventListener('click', () => run('Analyzing the selected phone export…', async () => {
   el('external-forensic-result').hidden = true;
   return showExternalReport(await invoke('analyze_phone_artifacts', {
     mode:el('leapp-mode').value, scriptSha256:el('leapp-digest').value.trim(),
   }), 'Mobile artifact reports');
+}));
+
+pick('pick-fqlite', 'fqlite_report', 'fqlite-name', () => { el('external-forensic-result').hidden = true; });
+el('run-fqlite').addEventListener('click', () => run('Importing the selected FQLite report…', async () => {
+  el('external-forensic-result').hidden = true;
+  return showExternalReport(await invoke('import_fqlite'), 'FQLite CASE report');
 }));
 
 document.addEventListener('view-changed', ({detail}) => {

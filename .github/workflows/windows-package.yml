@@ -24,6 +24,7 @@ jobs:
       - run: rustup toolchain install 1.99.1 --profile minimal
       - run: cargo test --release --locked
       - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
+      - run: cargo test --release --locked --manifest-path desktop/Cargo.toml
       - run: cargo build --release --locked
       - name: Stage standalone executables
         shell: pwsh
@@ -33,8 +34,63 @@ jobs:
           Copy-Item desktop/target/release/omnirecovery-desktop.exe "package/OmniRecovery-$version-windows-x64.exe"
           Copy-Item target/release/omnirecovery.exe "package/OmniRecovery-$version-windows-cli-x64.exe"
           & "package/OmniRecovery-$version-windows-cli-x64.exe" --version
+          New-Item -ItemType Directory -Path portable
+          Copy-Item "package/OmniRecovery-$version-windows-x64.exe" portable/OmniRecovery.exe
+          Copy-Item "package/OmniRecovery-$version-windows-cli-x64.exe" portable/OmniRecovery-cli.exe
+          Copy-Item docs/windows-setup.md portable/Windows-setup.md
+      - name: Check portable ADB discovery and Windows USB transport
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path portable/platform-tools
+          @'
+          fn main() {
+              let args: Vec<_> = std::env::args().skip(1).collect();
+              assert_eq!(args, ["-H", "127.0.0.1", "-P", "5037", "devices", "-l"]);
+              println!("List of devices attached\nCI-ANDROID device model:Fixture\nCI-WIRELESS device");
+          }
+          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/fixture-adb.rs"
+          rustc --crate-name fixture_adb "$env:RUNNER_TEMP/fixture-adb.rs" -o portable/platform-tools/adb.exe
+          if ($LASTEXITCODE -ne 0) { throw "Could not build synthetic ADB helper" }
+          @'
+          import json
+          import socket
+          import subprocess
+          import threading
+
+          def device(serial, connection):
+              fields = bytes([10, len(serial)]) + serial + bytes([16, 8, 56, connection])
+              return bytes([10, len(fields)]) + fields
+
+          payload = device(b"CI-ANDROID", 1) + device(b"CI-WIRELESS", 2)
+          with socket.create_server(("127.0.0.1", 5037)) as server:
+              server.settimeout(15)
+
+              def reply():
+                  with server.accept()[0] as client, client.makefile("rb") as reader:
+                      assert reader.read(35) == b"001fhost:track-devices-proto-binary"
+                      client.sendall(f"OKAY{len(payload):04x}".encode() + payload)
+
+              thread = threading.Thread(target=reply, daemon=True)
+              thread.start()
+              report = subprocess.check_output(
+                  ["portable/OmniRecovery-cli.exe", "devices", "android"], timeout=20
+              )
+              thread.join(5)
+              devices = json.loads(report)
+              assert [(row["id"], row["state"]) for row in devices] == [("CI-ANDROID", "device")]
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Portable Windows ADB smoke test failed" }
+          Remove-Item -LiteralPath portable/platform-tools/adb.exe
+          Remove-Item -LiteralPath portable/platform-tools
+      - name: Archive the portable package
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path desktop/Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path portable -DestinationPath "package/OmniRecovery-$version-windows-portable-x64.zip"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: omnirecovery-windows-x64
-          path: package/*.exe
+          path: |
+            package/*.exe
+            package/*.zip
           if-no-files-found: error

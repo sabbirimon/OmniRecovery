@@ -1,11 +1,11 @@
 use omnirecovery::{DetectedDevice, Transport, detect_devices};
 use serde::Serialize;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use std::io::{Read, Seek};
 use std::path::PathBuf;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use std::process::{Command, Stdio};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, Serialize)]
@@ -54,13 +54,24 @@ pub struct Devices {
     pub storage_error: Option<String>,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn discover() -> Result<Devices, String> {
     Ok(Devices {
         disks: Vec::new(),
         usb: Vec::new(),
         usb_error: Some("USB product inventory is available in the macOS build.".into()),
         storage_error: Some("Live storage inventory is available in the macOS build.".into()),
+    })
+}
+
+#[cfg(windows)]
+pub fn discover() -> Result<Devices, String> {
+    let usb = windows::usb();
+    Ok(Devices {
+        disks: Vec::new(),
+        usb_error: usb.as_ref().err().cloned(),
+        usb: usb.unwrap_or_default(),
+        storage_error: Some("Use Scan media to open a disk image or folder on Windows.".into()),
     })
 }
 
@@ -86,7 +97,7 @@ pub fn recheck_volume(_id: &str) -> Option<Volume> {
     None
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 fn command_output(command: &mut Command, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut output = tempfile::tempfile().map_err(|error| error.to_string())?;
     let writer = output.try_clone().map_err(|error| error.to_string())?;
@@ -217,20 +228,24 @@ fn merge_phones(
 }
 
 pub fn discover_phones() -> PhoneInventory {
-    let (android, ios) = std::thread::scope(|scope| {
+    let (android, ios, usb) = std::thread::scope(|scope| {
         let android = scope.spawn(|| detect_devices(Transport::Android));
-        let ios = detect_devices(Transport::Ios);
+        let ios = scope.spawn(|| detect_devices(Transport::Ios));
+        #[cfg(target_os = "macos")]
+        let usb = mac::usb();
+        #[cfg(windows)]
+        let usb = windows::usb();
+        #[cfg(not(any(target_os = "macos", windows)))]
+        let usb: Result<Vec<UsbDevice>, String> = Ok(Vec::new());
         (
             android
                 .join()
                 .unwrap_or_else(|_| Err(std::io::Error::other("Android inventory unavailable"))),
-            ios,
+            ios.join()
+                .unwrap_or_else(|_| Err(std::io::Error::other("iOS inventory unavailable"))),
+            usb,
         )
     });
-    #[cfg(target_os = "macos")]
-    let usb = mac::usb();
-    #[cfg(not(target_os = "macos"))]
-    let usb: Result<Vec<UsbDevice>, String> = Ok(Vec::new());
     let android_error = android.as_ref().err().map(ToString::to_string);
     let ios_error = ios.as_ref().err().map(ToString::to_string);
     let usb_error = usb.as_ref().err().cloned();
@@ -244,6 +259,160 @@ pub fn discover_phones() -> PhoneInventory {
         android_error,
         ios_error,
         usb_error,
+    }
+}
+
+#[cfg(windows)]
+mod windows {
+    use super::*;
+    use serde::Deserialize;
+    use std::os::windows::process::CommandExt;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct PnpDevice {
+        #[serde(rename = "DeviceID")]
+        id: String,
+        name: Option<String>,
+        manufacturer: Option<String>,
+        #[serde(rename = "PNPClass")]
+        class: Option<String>,
+        parent: Option<String>,
+    }
+
+    pub(super) fn usb() -> Result<Vec<UsbDevice>, String> {
+        let root = std::env::var_os("SystemRoot").ok_or("Windows directory unavailable.")?;
+        let powershell = PathBuf::from(root).join("System32/WindowsPowerShell/v1.0/powershell.exe");
+        let script = r#"
+            $ErrorActionPreference = 'Stop'
+            [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $devices = @(Get-CimInstance -ClassName Win32_PnPEntity -Filter "Present = TRUE" -Property DeviceID,Name,Manufacturer,PNPClass |
+                Where-Object { $_.DeviceID -like 'USB\VID_*' } |
+                Select-Object -Property DeviceID,Name,Manufacturer,PNPClass,@{Name='Parent';Expression={
+                    if ($_.DeviceID -match '&MI_' -and ($_.Name -match 'ADB|Android|MTP|iPhone|iPad|Apple Mobile' -or $_.PNPClass -eq 'WPD')) {
+                        (Get-PnpDeviceProperty -InstanceId $_.DeviceID -KeyName 'DEVPKEY_Device_Parent' -ErrorAction SilentlyContinue).Data
+                    }
+                }})
+            ConvertTo-Json -InputObject $devices -Compress
+        "#;
+        let bytes = command_output(
+            Command::new(powershell)
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .args(["-NoProfile", "-NonInteractive", "-Command", script]),
+            Duration::from_secs(8),
+        )?;
+        parse_usb(&bytes)
+    }
+
+    fn parse_usb(bytes: &[u8]) -> Result<Vec<UsbDevice>, String> {
+        let rows: Vec<PnpDevice> =
+            serde_json::from_slice(bytes).map_err(|_| "Windows USB inventory is unreadable.")?;
+        let mut phones = std::collections::BTreeMap::<String, UsbDevice>::new();
+        let mut devices = Vec::new();
+        for row in rows {
+            let Some((key, device, interface)) = classify(row) else {
+                continue;
+            };
+            if device.platform == "USB peripheral" {
+                devices.push(device);
+            } else if !interface {
+                phones.insert(key, device);
+            } else {
+                phones.entry(key).or_insert(device);
+            }
+        }
+        devices.extend(phones.into_values());
+        Ok(devices)
+    }
+
+    fn classify(row: PnpDevice) -> Option<(String, UsbDevice, bool)> {
+        let (_, path) = row.id.split_once('\\')?;
+        let (hardware, instance) = path.split_once('\\')?;
+        let hardware = hardware.to_ascii_uppercase();
+        if !hardware.starts_with("VID_") || !hardware.contains("&PID_") {
+            return None;
+        }
+        let name = row.name?;
+        let vendor = row.manufacturer.unwrap_or_else(|| "Unknown vendor".into());
+        let label = name.to_ascii_lowercase();
+        let interface = hardware.contains("&MI_");
+        let mobile_mtp = row.class.as_deref() == Some("WPD")
+            && (label.contains("mtp") || label.starts_with("sm-"))
+            && [
+                "VID_04E8&",
+                "VID_18D1&",
+                "VID_2717&",
+                "VID_22B8&",
+                "VID_2A70&",
+            ]
+            .iter()
+            .any(|vendor_id| hardware.starts_with(vendor_id));
+        let platform = if hardware.starts_with("VID_05AC&")
+            && ["iphone", "ipad", "ipod", "apple mobile device"]
+                .iter()
+                .any(|hint| label.contains(hint))
+        {
+            "iOS"
+        } else if [
+            "android",
+            "adb interface",
+            "galaxy",
+            "pixel",
+            "redmi",
+            "xiaomi",
+            "oneplus",
+            "motorola",
+        ]
+        .iter()
+        .any(|hint| label.contains(hint))
+            || mobile_mtp
+        {
+            "Android"
+        } else if interface {
+            return None;
+        } else {
+            "USB peripheral"
+        };
+        let parent = row
+            .parent
+            .filter(|id| id.to_ascii_uppercase().starts_with("USB\\VID_"));
+        let serial = if interface {
+            parent
+                .as_deref()
+                .and_then(|id| id.rsplit_once('\\'))
+                .map(|(_, serial)| serial)
+        } else {
+            Some(instance)
+        }
+        .filter(|serial| !serial.contains('&'))
+        .map(str::to_owned);
+        let key = parent.unwrap_or(row.id).to_ascii_uppercase();
+        Some((
+            key,
+            UsbDevice {
+                name,
+                vendor,
+                platform,
+                serial,
+            },
+            interface,
+        ))
+    }
+
+    #[test]
+    fn windows_reports_mobile_devices_before_adb_is_ready() {
+        let bytes = br#"[
+            {"DeviceID":"USB\\VID_04E8&PID_6860\\SAMSUNG1","Name":"Samsung Android","PNPClass":"USB"},
+            {"DeviceID":"USB\\VID_04E8&PID_6860&MI_01\\6&ABC&0","Name":"MTP USB Device","PNPClass":"WPD","Parent":"USB\\VID_04E8&PID_6860\\SAMSUNG1"},
+            {"DeviceID":"USB\\VID_05AC&PID_12A8\\APPLE1","Name":"Apple iPhone","PNPClass":"WPD"},
+            {"DeviceID":"USB\\VID_1234&PID_0001\\OTHER","Name":"Keyboard","PNPClass":"HIDClass"}
+        ]"#;
+        let devices = parse_usb(bytes).unwrap();
+        assert_eq!(devices.len(), 3);
+        assert_eq!(devices[0].platform, "USB peripheral");
+        assert_eq!(devices[1].platform, "Android");
+        assert_eq!(devices[1].serial.as_deref(), Some("SAMSUNG1"));
+        assert_eq!(devices[2].platform, "iOS");
     }
 }
 

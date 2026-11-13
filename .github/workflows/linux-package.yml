@@ -24,7 +24,7 @@ jobs:
       - name: Install build and smoke-test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth xdotool sleuthkit dosfstools mtools
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth xdotool sleuthkit dosfstools mtools testdisk
       - run: rustup toolchain install 1.99.1 --profile minimal
       - run: cargo test --release --locked
       - run: cargo build --release --locked --manifest-path desktop/Cargo.toml
@@ -71,6 +71,44 @@ jobs:
           report=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$fixture/result.json")
           grep -i 'eleted\.txt' "$report/data/tsk-deleted.txt"
           target/release/omnirecovery verify-acquisition "$report"
+          address=$(awk -F ':\t' 'tolower($2) ~ /eleted\.txt/ {split($1, fields, " "); print fields[3]; exit}' "$report/data/tsk-deleted.txt")
+          digest=$(sha256sum "$fixture/fat.dd" | cut -d' ' -f1)
+          target/release/omnirecovery tsk-recover "$fixture/fat.dd" "$fixture/reports" --address "$address" --source-sha256 "$digest" > "$fixture/recovered.json"
+          recovered=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$fixture/recovered.json")
+          cmp "$fixture/DELETED.TXT" "$recovered/data/recovered.bin"
+          target/release/omnirecovery verify-acquisition "$recovered"
+          if target/release/omnirecovery tsk-recover "$fixture/fat.dd" "$fixture/reports" --address "$address" --source-sha256 "$(printf '%064d' 0)"; then
+            exit 1
+          fi
+      - name: Verify TestDisk and PhotoRec on synthetic images
+        run: |
+          set -euo pipefail
+          fixture=$(mktemp -d)
+          mkdir "$fixture/reports"
+          truncate -s 16M "$fixture/disk.dd"
+          python3 - "$fixture/disk.dd" <<'PY'
+          import struct
+          import sys
+          with open(sys.argv[1], "r+b") as disk:
+              sector = bytearray(512)
+              sector[446:462] = struct.pack("<B3sB3sII", 0, b"\0\2\0", 0x06, b"\xfe\xff\xff", 2048, 8192)
+              sector[510:512] = b"\x55\xaa"
+              disk.write(sector)
+          PY
+          target/release/omnirecovery testdisk-list "$fixture/disk.dd" "$fixture/reports" > "$fixture/partitions.json"
+          partitions=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$fixture/partitions.json")
+          grep -E 'FAT16.*8192' "$partitions/data/testdisk-partitions.txt"
+          truncate -s 4M "$fixture/carve.dd"
+          dd if=desktop/assets/demo.jpg of="$fixture/carve.dd" bs=512 seek=16 conv=notrunc status=none
+          target/release/omnirecovery photorec-carve "$fixture/carve.dd" "$fixture/reports" > "$fixture/carved.json"
+          carved=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["output"])' "$fixture/carved.json")
+          python3 - "$carved" <<'PY'
+          import pathlib
+          import sys
+          original = pathlib.Path("desktop/assets/demo.jpg").read_bytes()
+          assert any(path.read_bytes() == original for path in pathlib.Path(sys.argv[1]).glob("data/carved.*/*.jpg"))
+          PY
+          target/release/omnirecovery verify-acquisition "$carved"
       - name: Build the GUI package and standalone CLI archive
         run: |
           set -eu

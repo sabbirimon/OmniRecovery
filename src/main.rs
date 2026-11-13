@@ -53,6 +53,34 @@ enum EvidenceCommand {
         #[arg(long, default_value_t = 512)]
         sector_size: u32,
     },
+    /// Extract a deleted-file candidate listed by Sleuth Kit.
+    TskRecover {
+        image: PathBuf,
+        destination: PathBuf,
+        #[arg(long)]
+        address: String,
+        #[arg(long)]
+        source_sha256: String,
+        #[arg(long, default_value_t = 0)]
+        sector_offset: u64,
+        #[arg(long, default_value_t = 512)]
+        sector_size: u32,
+    },
+    /// List partitions from a raw image with the installed TestDisk helper.
+    TestdiskList {
+        image: PathBuf,
+        destination: PathBuf,
+    },
+    /// Recover file candidates from a raw image with the installed PhotoRec helper.
+    PhotorecCarve {
+        image: PathBuf,
+        destination: PathBuf,
+    },
+    /// Import a FQLite CASE JSON-LD report.
+    ImportFqlite {
+        report: PathBuf,
+        destination: PathBuf,
+    },
     /// Export a scanned finding using its original offset, length and recorded SHA-256 values.
     Recover {
         image: PathBuf,
@@ -464,6 +492,45 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let report =
                 omnirecovery::tsk_deleted(&image, &destination, sector_offset, sector_size)?;
             serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::Evidence(EvidenceCommand::TskRecover {
+            image,
+            destination,
+            address,
+            source_sha256,
+            sector_offset,
+            sector_size,
+        }) => {
+            let report = omnirecovery::tsk_recover(
+                &image,
+                &destination,
+                sector_offset,
+                sector_size,
+                &address,
+                &source_sha256,
+            )?;
+            serde_json::to_writer_pretty(&mut output, &report)?;
+        }
+        Command::Evidence(EvidenceCommand::TestdiskList { image, destination }) => {
+            serde_json::to_writer_pretty(
+                &mut output,
+                &omnirecovery::testdisk_list(&image, &destination)?,
+            )?;
+        }
+        Command::Evidence(EvidenceCommand::PhotorecCarve { image, destination }) => {
+            serde_json::to_writer_pretty(
+                &mut output,
+                &omnirecovery::photorec_carve(&image, &destination)?,
+            )?;
+        }
+        Command::Evidence(EvidenceCommand::ImportFqlite {
+            report,
+            destination,
+        }) => {
+            serde_json::to_writer_pretty(
+                &mut output,
+                &omnirecovery::import_fqlite_report(&report, &destination)?,
+            )?;
         }
         Command::Evidence(EvidenceCommand::Recover {
             image,

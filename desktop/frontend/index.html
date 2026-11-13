@@ -37,7 +37,7 @@
         <button class="nav-button" data-view="automation"><span class="nav-icon" aria-hidden="true">⌘</span><span class="nav-label">Automation</span></button>
         <button class="nav-button" data-view="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
-      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.10</span></div>
+      <div class="sidebar-footer"><span class="offline-dot"></span>Local workspace <span class="version">0.3.11</span></div>
     </aside>
 
     <main>
@@ -75,7 +75,7 @@
         <div class="phone-card-list" id="phone-card-list"></div>
         <section class="card phone-connect" id="phone-usb-setup">
           <h2>Connect a phone by USB</h2>
-          <div class="source-pair"><div><h3>Android</h3><p class="muted">Unlock the phone, turn on USB debugging in Developer options, and approve this computer on the phone.</p></div><div><h3>iPhone or iPad</h3><p class="muted">Unlock the device, connect it with a data cable, then tap Trust when prompted.</p></div></div>
+          <div class="source-pair"><div><h3>Android</h3><p class="muted">Unlock the phone, turn on USB debugging in Developer options, and approve this computer on the phone.</p><p class="muted" id="phone-windows-help" hidden>On Windows, extract Android SDK Platform-Tools beside OmniRecovery.exe so the platform-tools folder contains adb.exe. If Windows sees the phone and ADB cannot access it, check Device Manager for the manufacturer’s ADB driver.</p></div><div><h3>iPhone or iPad</h3><p class="muted">Unlock the device, connect it with a data cable, then tap Trust when prompted.</p></div></div>
           <p class="muted" id="phone-usb-status" aria-live="polite"></p>
         </section>
         <section class="card phone-connect" id="phone-wireless-setup" hidden>
@@ -453,6 +453,13 @@
           <h2>Deleted entries · The Sleuth Kit</h2>
           <p class="muted">Select a raw image above. This uses the installed `fls` helper to list deleted filesystem entries.</p>
           <div class="scan-options"><label>Filesystem start sector<input id="tsk-offset" inputmode="numeric" value="0"></label><label>Sector size<select id="tsk-sector"><option value="512">512 bytes</option><option value="4096">4096 bytes</option></select></label><button data-action class="primary" id="run-tsk">List deleted entries</button></div>
+          <div id="tsk-recovery" class="actions" hidden><label>Deleted file<select id="tsk-recovery-entry"></select></label><button data-action id="recover-tsk">Recover selected file</button></div>
+          <p id="tsk-recovered-path" class="muted transfer-path" hidden></p>
+        </section>
+        <section class="card output-card">
+          <h2>Disk image tools</h2>
+          <p class="muted">Use installed TestDisk to list partitions or PhotoRec to search the selected raw image for file signatures.</p>
+          <div class="actions"><button data-action id="run-testdisk">List partitions</button><button data-action id="run-photorec">Carve files</button></div>
         </section>
         <section class="card output-card">
           <h2>Mobile artifact analysis</h2>
@@ -465,9 +472,15 @@
           </div>
           <div class="actions"><button data-action class="primary" id="run-leapp">Analyze artifacts</button></div>
         </section>
+        <section class="card output-card">
+          <h2>Import a FQLite report</h2>
+          <p class="muted">Select a CASE JSON-LD report exported by FQLite.</p>
+          <div class="actions"><button data-action id="pick-fqlite">Choose report</button><button data-action id="run-fqlite">Import report</button></div>
+          <p class="muted" id="fqlite-name"></p>
+        </section>
         <section class="card output-card" id="external-forensic-result" hidden>
           <h2 id="external-forensic-title"></h2><p class="muted transfer-path" id="external-forensic-location"></p>
-          <pre id="external-forensic-preview" hidden aria-label="Deleted-entry report preview"></pre>
+          <pre id="external-forensic-preview" hidden aria-label="Forensic report preview"></pre>
         </section>
       </section>
 
