@@ -41,7 +41,8 @@ jobs:
       - name: Check portable ADB discovery and Windows USB transport
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path portable/platform-tools
+          New-Item -ItemType Directory -Path adb-smoke/platform-tools -Force
+          Copy-Item portable/OmniRecovery-cli.exe adb-smoke/OmniRecovery-cli.exe
           @'
           fn main() {
               let args: Vec<_> = std::env::args().skip(1).collect();
@@ -49,7 +50,7 @@ jobs:
               println!("List of devices attached\nCI-ANDROID device model:Fixture\nCI-WIRELESS device");
           }
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/fixture-adb.rs"
-          rustc --crate-name fixture_adb "$env:RUNNER_TEMP/fixture-adb.rs" -o portable/platform-tools/adb.exe
+          rustc --crate-name fixture_adb "$env:RUNNER_TEMP/fixture-adb.rs" -o adb-smoke/platform-tools/adb.exe
           if ($LASTEXITCODE -ne 0) { throw "Could not build synthetic ADB helper" }
           @'
           import json
@@ -73,15 +74,13 @@ jobs:
               thread = threading.Thread(target=reply, daemon=True)
               thread.start()
               report = subprocess.check_output(
-                  ["portable/OmniRecovery-cli.exe", "devices", "android"], timeout=20
+                  ["adb-smoke/OmniRecovery-cli.exe", "devices", "android"], timeout=20
               )
               thread.join(5)
               devices = json.loads(report)
               assert [(row["id"], row["state"]) for row in devices] == [("CI-ANDROID", "device")]
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "Portable Windows ADB smoke test failed" }
-          Remove-Item -LiteralPath portable/platform-tools/adb.exe
-          Remove-Item -LiteralPath portable/platform-tools
       - name: Archive the portable package
         shell: pwsh
         run: |
